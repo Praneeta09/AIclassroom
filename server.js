@@ -313,4 +313,75 @@ Limit to 5-7 core topics. Return only the JSON.`;
         }
         res.json(session || null);
     });
+
+    // --- PARENT DASHBOARD ENDPOINTS ---
+
+    app.post('/api/parent/join-class', (req, res) => {
+        const { classCode, studentEmail } = req.body;
+        // In a real app, we'd validate the student exists in the class.
+        // For this demo, we'll just return a success with the studentId (using email as ID).
+        res.json({ studentId: studentEmail, classCode: classCode });
+    });
+
+    app.post('/api/ai/parent-summary', async (req, res) => {
+        try {
+            const { attendance, quiz, assignment, language = 'English' } = req.body;
+            const labelsMap = {
+                'English': { strength: 'Strength', weakness: 'Weakness', suggestion: 'Suggestion' },
+                'Hindi': { strength: 'मजबूती', weakness: 'कमजोरी', suggestion: 'सुझाव' },
+                'Marathi': { strength: 'सामर्थ्य', कमतरता: 'कमतरता', सल्ला: 'सल्ला' }
+            };
+            const labels = labelsMap[language] || labelsMap['English'];
+
+            const prompt = `Generate a short student performance summary in ${language}:
+Attendance: ${attendance}
+Quiz: ${quiz}
+Assignments: ${assignment}
+
+Output must be exactly in this format using ${language}:
+* ${labels.strength}: (one short sentence)
+* ${labels.weakness}: (one short sentence)
+* ${labels.suggestion}: (one short sentence)
+
+MANDATORY: You must write the entire response only in ${language} script. No explanation.`;
+
+            const text = await callLocalAI(prompt, 'mistral', { num_predict: 150, temperature: 0.5 });
+            res.json({ text });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.post('/api/ai/parent-recommendation', async (req, res) => {
+        try {
+            const { weakSubjects, language = 'English' } = req.body;
+            const prompt = `Suggest improvements for weak subjects in ${language}:
+Weak Subjects: ${weakSubjects}
+
+Output:
+* 3 bullet points in ${language}
+* MANDATORY: Respond only in ${language} script. No English unless strictly necessary.`;
+
+            const text = await callLocalAI(prompt, 'mistral', { num_predict: 200, temperature: 0.5 });
+            res.json({ text });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.post('/api/ai/parent-curriculum', async (req, res) => {
+        try {
+            const { subject, language = 'English' } = req.body;
+            const prompt = `Suggest extra learning for the subject "${subject}" in ${language}:
+Output:
+* 3 topics/skills in ${language}
+* 2 recommended platforms
+* MANDATORY: Respond only in ${language} script. No English.`;
+
+            const text = await callLocalAI(prompt, 'mistral', { num_predict: 250, temperature: 0.5 });
+            res.json({ text });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
 }

@@ -1368,7 +1368,14 @@ const StudentPortal: React.FC<StudentPortalProps> = ({
   const handleQuizComplete = async (score: number, total: number) => {
     setQuizResult({ score, total });
     if (activeQuiz && user.classCode) {
-      await addSubmission({ quizId: activeQuiz.id, studentName: user.name, score, totalQuestions: total, classCode: user.classCode });
+      await addSubmission({ 
+        quizId: activeQuiz.id, 
+        studentName: user.name, 
+        studentEmail: user.email,
+        score, 
+        totalQuestions: total, 
+        classCode: user.classCode 
+      });
     }
     setActiveQuiz(null);
     setActivePage('quizzes');

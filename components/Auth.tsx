@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Role } from '../types';
-import { ArrowLeftIcon, TeacherIcon, StudentIcon } from './Icons';
+import { ArrowLeftIcon, TeacherIcon, StudentIcon, ParentIcon } from './Icons';
 
 interface AuthProps {
   role: Role;
@@ -91,8 +91,8 @@ const Auth: React.FC<AuthProps> = ({ role, onAuthSuccess, onBack }) => {
     }
   };
 
-  const portalName = role === 'teacher' ? 'Teacher Portal' : 'Student Portal';
-  const portalIcon = role === 'teacher' ? <TeacherIcon /> : <StudentIcon />;
+  const portalName = role === 'teacher' ? 'Teacher Portal' : role === 'parent' ? 'Parent Portal' : 'Student Portal';
+  const portalIcon = role === 'teacher' ? <TeacherIcon /> : role === 'parent' ? <ParentIcon /> : <StudentIcon />;
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh]">

@@ -126,7 +126,9 @@ const buildDashboardData = (user: User): DashboardData => {
         allUsers: db.getUsers().map(({ password_DO_NOT_USE_IN_PROD, ...safeUser }) => safeUser),
         classrooms: db.getClassrooms(),
         quizzes: visibleQuizzes,
-        studentSubmissions: db.getSubmissions().filter(s => s.classCode === classCode),
+        studentSubmissions: user.role === 'teacher' 
+            ? db.getSubmissions().filter(s => s.classCode === classCode)
+            : db.getSubmissions().filter(s => s.classCode === classCode && (s as any).studentEmail === user.email),
         sharedContent: user.role === 'teacher' ? db.getSharedContent().filter(sc => sc.classCode === classCode) : db.getSharedContent().filter(sc => sc.classCode === classCode && sc.status === 'published'),
         generatedLectures: visibleGeneratedLectures,
         generatedCaseStudies: visibleGeneratedCaseStudies,
@@ -233,6 +235,58 @@ export const joinClass = async (userEmail: string, classCode: string): Promise<U
 export const fetchDashboardData = async (user: User): Promise<DashboardData> => {
     await delay(SIMULATED_DELAY);
     return buildDashboardData(user);
+};
+
+export const joinClassParent = async (parentEmail: string, classCode: string, studentEmail: string): Promise<User> => {
+    await delay(SIMULATED_DELAY);
+    const classrooms = db.getClassrooms();
+    const users = db.getUsers();
+    
+    if (!classrooms.some(c => c.code === classCode)) {
+        throw new Error('Invalid class code. Please check with the teacher.');
+    }
+
+    // Verify student exists and belongs to the class
+    const student = users.find(u => u.email === studentEmail && u.role === 'student' && u.classCode === classCode);
+    if (!student) {
+        throw new Error(`Student with email ${studentEmail} not found in this class.`);
+    }
+
+    let updatedUserForDb: DBUser | null = null;
+    const updatedUsers = users.map(u => {
+        if (u.email === parentEmail) {
+            updatedUserForDb = { ...u, classCode, studentEmail };
+            return updatedUserForDb;
+        }
+        return u;
+    });
+
+    if (!updatedUserForDb) throw new Error('Parent user not found.');
+    
+    db.saveUsers(updatedUsers);
+    const userForSession: User = { 
+        name: updatedUserForDb.name, 
+        email: updatedUserForDb.email, 
+        role: updatedUserForDb.role, 
+        classCode: updatedUserForDb.classCode,
+        studentEmail: updatedUserForDb.studentEmail
+    };
+    localStorage.setItem('user', JSON.stringify(userForSession));
+    return userForSession;
+};
+
+export const fetchParentDashboardData = async (studentEmail: string, classCode: string): Promise<DashboardData> => {
+    await delay(SIMULATED_DELAY);
+    // We basically want the student's view but with possibly more/different data.
+    // However, buildDashboardData already does heavy lifting.
+    // We can simulate a student user object to reuse that logic.
+    const mockStudent: User = {
+        name: 'Mock',
+        email: studentEmail,
+        role: 'student',
+        classCode: classCode
+    };
+    return buildDashboardData(mockStudent);
 };
 
 const quizService = createCrudService<Quiz>(db.getQuizzes, db.saveQuizzes);

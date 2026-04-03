@@ -54,4 +54,6 @@ export {
     setCaseStudyStatus,
     deleteGeneratedLecture,
     deleteCaseStudy,
+    joinClassParent,
+    fetchParentDashboardData,
 } from '../backend/api';

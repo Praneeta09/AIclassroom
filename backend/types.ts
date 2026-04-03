@@ -1,7 +1,7 @@
 // This file contains type definitions for the mock backend.
 // It is mostly identical to the frontend types.ts to ensure compatibility.
 
-export type Role = 'teacher' | 'student';
+export type Role = 'teacher' | 'student' | 'parent';
 export type SupportedLectureLanguage = 'English' | 'Hindi' | 'Marathi';
 export type SupportedBilingualMode = 'English+Hindi' | 'English+Marathi';
 export type LectureLanguagePreference = SupportedLectureLanguage | SupportedBilingualMode;
@@ -15,6 +15,7 @@ export interface User {
   role: Role;
   classCode?: string;
   imageUrl?: string;
+  studentEmail?: string;
 }
 
 export interface DBUser extends User {
@@ -56,6 +57,7 @@ export interface Submission {
   totalQuestions: number;
   submittedAt: string;
   classCode: string;
+  studentEmail: string;
   lectureId?: string;
 }
 

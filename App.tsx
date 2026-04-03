@@ -7,6 +7,8 @@ import TeacherPortal from './components/TeacherPortal';
 import StudentPortal from './components/StudentPortal';
 import AccessibilityEnhancer from './components/AccessibilityEnhancer';
 import JoinClass from './components/JoinClass';
+import ParentJoinClass from './components/ParentJoinClass';
+import ParentPortal from './components/ParentPortal';
 
 const App: React.FC = () => {
   const faqsData: FAQ[] = [
@@ -41,13 +43,15 @@ const App: React.FC = () => {
   const [accessibilitySettings, setAccessibilitySettings] = useState<AccessibilitySettings>({ fontSize: 16, highContrast: false });
 
   const fetchDataForUser = async (currentUser: User) => {
-    if (currentUser.role === 'student' && !currentUser.classCode) {
+    if ((currentUser.role === 'student' || currentUser.role === 'parent') && !currentUser.classCode) {
       setAppLoading(false);
       return;
     }
     setAppLoading(true);
     try {
-      const data = await apiService.fetchDashboardData(currentUser);
+      const data = currentUser.role === 'parent' && currentUser.studentEmail
+        ? await apiService.fetchParentDashboardData(currentUser.studentEmail, currentUser.classCode!)
+        : await apiService.fetchDashboardData(currentUser);
       setAllUsers(data.allUsers);
       setClassrooms(data.classrooms);
       setQuizzes(data.quizzes);
@@ -109,6 +113,14 @@ const App: React.FC = () => {
   const handleJoinClass = async (classCode: string) => {
     if (user) {
       const updatedUser = await apiService.joinClass(user.email, classCode);
+      setUser(updatedUser);
+      await fetchDataForUser(updatedUser);
+    }
+  };
+
+  const handleJoinClassParent = async (classCode: string, studentEmail: string) => {
+    if (user) {
+      const updatedUser = await apiService.joinClassParent(user.email, classCode, studentEmail);
       setUser(updatedUser);
       await fetchDataForUser(updatedUser);
     }
@@ -298,6 +310,21 @@ const App: React.FC = () => {
             addAssignmentSubmission={handleAddAssignmentSubmission}
             assistanceDisabled={assistanceDisabled}
             submitAttendance={handleSubmitAttendance}
+          />;
+        case 'parent':
+          if (!user.classCode) {
+             return <ParentJoinClass user={user} onJoinClassParent={handleJoinClassParent} onLogout={handleLogout} />;
+          }
+          return <ParentPortal
+            user={user}
+            onLogout={handleLogout}
+            quizzes={quizzes}
+            studentSubmissions={studentSubmissions}
+            attendanceSessions={attendanceSessions}
+            videoLectures={videoLectures}
+            curriculumPlans={curriculumPlans}
+            assignments={assignments}
+            assignmentSubmissions={assignmentSubmissions}
           />;
         default:
           return <RoleSelection onSelectRole={handleRoleSelect} />;

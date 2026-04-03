@@ -1,4 +1,4 @@
-export type Role = 'teacher' | 'student';
+export type Role = 'teacher' | 'student' | 'parent';
 export type SupportedLectureLanguage = 'English' | 'Hindi' | 'Marathi';
 export type SupportedBilingualMode = 'English+Hindi' | 'English+Marathi';
 export type LectureLanguagePreference = SupportedLectureLanguage | SupportedBilingualMode;
@@ -18,6 +18,7 @@ export interface User {
   role: Role;
   classCode?: string;
   imageUrl?: string;
+  studentEmail?: string;
 }
 
 export interface Question {
@@ -49,6 +50,7 @@ export interface Submission {
   totalQuestions: number;
   submittedAt: string;
   classCode: string;
+  studentEmail: string;
   lectureId?: string;
 }
 

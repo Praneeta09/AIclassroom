@@ -1,6 +1,6 @@
 import React from 'react';
 import { Role } from '../types';
-import { TeacherIcon, StudentIcon } from './Icons';
+import { TeacherIcon, StudentIcon, ParentIcon } from './Icons';
 
 interface RoleSelectionProps {
   onSelectRole: (role: Role) => void;
@@ -14,7 +14,7 @@ const RoleSelection: React.FC<RoleSelectionProps> = ({ onSelectRole }) => {
         <p className="text-xl mt-4 text-gray-400">Select your role to continue</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-10 w-full max-w-4xl">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-6xl">
         <RoleCard
           icon={<TeacherIcon />}
           title="I'm a Teacher"
@@ -28,6 +28,13 @@ const RoleSelection: React.FC<RoleSelectionProps> = ({ onSelectRole }) => {
           description="Attempt quizzes and track your performance in real-time."
           buttonText="Go to Student Portal"
           onClick={() => onSelectRole('student')}
+        />
+        <RoleCard
+          icon={<ParentIcon />}
+          title="I'm a Parent"
+          description="Monitor your child's progress, attendance, and get AI insights."
+          buttonText="Go to Parent Portal"
+          onClick={() => onSelectRole('parent')}
         />
       </div>
     </div>

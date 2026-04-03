@@ -3,9 +3,10 @@ import { PlayIcon, PauseIcon, StopIcon } from './Icons';
 
 interface TTSPlayerProps {
   text: string;
+  language: 'English' | 'Hindi' | 'Marathi';
 }
 
-const TTSPlayer: React.FC<TTSPlayerProps> = ({ text }) => {
+const TTSPlayer: React.FC<TTSPlayerProps> = ({ text, language }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -30,6 +31,16 @@ const TTSPlayer: React.FC<TTSPlayerProps> = ({ text }) => {
       window.speechSynthesis.cancel();
     };
   }, []);
+
+  // Smart Voice Selection based on language
+  useEffect(() => {
+    if (voices.length === 0) return;
+    const langCode = language === 'Hindi' ? 'hi' : (language === 'Marathi' ? 'mr' : 'en');
+    const matchingVoice = voices.find(v => v.lang.startsWith(langCode));
+    if (matchingVoice) {
+      setConfig(prev => ({ ...prev, voiceURI: matchingVoice.voiceURI }));
+    }
+  }, [language, voices]);
 
   const handlePlay = () => {
     if (isPaused) {
