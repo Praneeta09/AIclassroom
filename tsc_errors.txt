@@ -1,0 +1,1 @@
+backend/api.ts(123,124): error TS2339: Property 'status' does not exist on type 'CurriculumPlan'.

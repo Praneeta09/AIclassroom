@@ -1,0 +1,7 @@
+{
+  "name": "AI Smart Classroom",
+  "description": "An AI-powered platform for teachers to create quizzes and for students to test their knowledge. Includes an AI-powered accessibility enhancer for a more inclusive learning experience.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
