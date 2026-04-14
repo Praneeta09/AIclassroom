@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Quiz, User, Submission, SharedContent, GeneratedLecture, CaseStudy, FAQ, AttendanceSession, VideoLecture, CurriculumPlan, CurriculumTopic, Assignment, AssignmentSubmission } from '../types';
+import { Quiz, User, Submission, SharedContent, GeneratedLecture, CaseStudy, FAQ, AttendanceSession, VideoLecture, CurriculumPlan, CurriculumTopic, Assignment, AssignmentSubmission, StudentPerformance } from '../types';
 import { 
   HomeIcon, QuizIcon, FileTextIcon, UserCheckIcon, SparklesIcon, ShareIcon, EyeIcon, 
   SummarizeIcon, TranslateIcon, BookOpenIcon, AIGeneratorIcon, CloseIcon, UploadIcon, SearchIcon, HelpCircleIcon, LogoutIcon, CheckCircleIcon, VisualizationIcon, ImageIcon, SpeakerIcon, FileSpreadsheetIcon 
 } from './Icons';
 import TTSPlayer from './TTSPlayer';
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import SmartSearch from './SmartSearch';
 import Sidebar from './Sidebar';
 import { summarizeText, translateText, analyzeImageContent, getExplanation, generateQuiz } from '../services/aiService';
-import SmartSearch from './SmartSearch';
+import VidyaAI from './VidyaAI';
 
 declare global {
   interface Window { mammoth: any; XLSX: any; pdfjsLib: any; pptx: any; }
@@ -26,7 +27,6 @@ interface StudentPortalProps {
   faqs: FAQ[];
   attendanceSessions: AttendanceSession[];
   addAttendanceRecord: (record: any) => Promise<void>;
-  // New props
   videoLectures: VideoLecture[];
   curriculumPlans: CurriculumPlan[];
   assistanceDisabled: boolean;
@@ -35,15 +35,143 @@ interface StudentPortalProps {
   assignments: Assignment[];
   assignmentSubmissions: AssignmentSubmission[];
   addAssignmentSubmission: (s: Omit<AssignmentSubmission, 'id' | 'submittedAt'>) => Promise<void>;
+  studentPerformance: StudentPerformance[];
+  addStudentPerformance: (p: Omit<StudentPerformance, 'id' | 'timestamp'>) => Promise<void>;
+  isOfflineMode: boolean;
+  toggleOfflineMode: (val: boolean) => void;
 }
 
 // ---- Reused sub-components ----
+const PerformanceInsights: React.FC<{ performance: StudentPerformance[], onStartPracticeQuiz: (topic: string) => void }> = ({ performance, onStartPracticeQuiz }) => {
+  if (performance.length === 0) return null;
+  const latest = performance[performance.length - 1];
+  const analysis = latest.analysis as any;
+
+  return (
+    <div className="bg-brand-dark p-6 rounded-xl border border-brand-border mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold text-brand-cyan flex items-center gap-2">
+          <VisualizationIcon /> AI Learning Brain: {latest.topic}
+        </h2>
+        <span className="text-sm text-gray-400">Score: {latest.score}/{latest.totalQuestions}</span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="p-4 rounded-lg bg-red-900/10 border border-red-500/20">
+          <h3 className="font-bold text-red-400 mb-2">🚩 Weak Topics</h3>
+          <ul className="text-sm space-y-1 mb-4">
+            {analysis.weak_topics?.map((t: string, i: number) => <li key={i}>• {t}</li>)}
+          </ul>
+          {analysis.reason && (
+             <div className="bg-red-900/20 p-3 rounded-lg border border-red-500/30">
+               <p className="text-xs font-bold text-red-400 uppercase mb-1">Reason:</p>
+               <p className="text-xs text-gray-300">{analysis.reason}</p>
+             </div>
+          )}
+        </div>
+        <div className="p-4 rounded-lg bg-brand-cyan/10 border border-brand-cyan/20">
+          <h3 className="font-bold text-brand-cyan mb-2">🚀 What to Learn Next</h3>
+          <ul className="text-sm space-y-1">
+            {analysis.what_to_learn_next?.map((t: string, i: number) => <li key={i}>• {t}</li>)}
+          </ul>
+          {analysis.motivation && (
+             <p className="mt-4 p-3 bg-brand-cyan/20 rounded-lg text-xs italic text-brand-cyan border border-brand-cyan/30">
+               "{analysis.motivation}"
+             </p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="bg-brand-dark-blue p-5 rounded-xl border border-brand-border">
+          <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">📚 Recommended Books</h3>
+          <div className="space-y-3">
+            {analysis.books?.map((b: any, i: number) => (
+              <div key={i} className="text-xs border-l-2 border-brand-cyan pl-3">
+                <p className="font-bold text-white">{b.name}</p>
+                <p className="text-gray-400 mt-0.5">{b.reason}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="bg-brand-dark-blue p-5 rounded-xl border border-brand-border">
+          <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">🎥 YouTube Resources</h3>
+          <div className="space-y-3">
+            {analysis.youtube?.map((y: any, i: number) => (
+              <a key={i} href={`https://www.youtube.com/results?search_query=${encodeURIComponent(y.query)}`} target="_blank" rel="noreferrer" className="block p-3 bg-brand-dark rounded-lg hover:border-brand-cyan border border-brand-border transition-all">
+                <p className="text-xs font-bold text-brand-cyan mb-1">{y.topic}</p>
+                <p className="text-[10px] text-gray-500">{y.query}</p>
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <button 
+          onClick={() => onStartPracticeQuiz(analysis.weak_topics?.[0] || latest.topic)}
+          className="bg-brand-cyan text-brand-dark font-bold py-3 px-8 rounded-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2 shadow-lg shadow-brand-cyan/20"
+        >
+          <SparklesIcon /> Generate Targeted Practice Quiz
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const StatCard: React.FC<{ title: string, value: string | number }> = ({ title, value }) => (
   <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-6">
     <p className="text-sm text-gray-400">{title}</p>
     <p className="text-3xl font-bold mt-2">{value}</p>
   </div>
 );
+
+const FAQPage: React.FC<{ faqs: FAQ[] }> = ({ faqs }) => {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  return (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
+        <h2 className="text-3xl font-bold mb-2">Help Center & FAQ</h2>
+        <p className="text-gray-400 mb-8">Find answers to common questions about the platform and your courses.</p>
+        
+        {faqs.length === 0 ? (
+          <div className="text-center py-12 bg-brand-dark rounded-lg">
+            <HelpCircleIcon />
+            <p className="text-gray-500 mt-4">No FAQs available at this time.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {faqs.map((faq, index) => (
+              <div key={index} className="bg-brand-dark rounded-xl border border-brand-border overflow-hidden transition-all">
+                <button 
+                  onClick={() => setOpenIndex(openIndex === index ? null : index)}
+                  className="w-full flex justify-between items-center p-6 text-left hover:bg-brand-cyan/5 transition-colors"
+                >
+                  <span className="font-bold text-lg">{faq.question}</span>
+                  <span className={`transform transition-transform ${openIndex === index ? 'rotate-180' : ''}`}>▼</span>
+                </button>
+                {openIndex === index && (
+                  <div className="p-6 pt-0 text-gray-400 border-t border-brand-border leading-relaxed bg-brand-cyan/5">
+                    {faq.answer}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      
+      <div className="bg-brand-cyan/10 border border-brand-cyan/30 rounded-xl p-8 flex items-center gap-6">
+        <div className="w-16 h-16 bg-brand-cyan/20 rounded-full flex items-center justify-center text-3xl shadow-lg">💡</div>
+        <div>
+          <h3 className="text-xl font-bold text-brand-cyan mb-1">Still need help?</h3>
+          <p className="text-sm text-gray-400">Ask the AI Doubt Solver for immediate assistance with your educational queries.</p>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ---- Home Page ----
 const HomePage: React.FC<{ user: User, quizzes: Quiz[], userSubmissions: Submission[], sharedContent: SharedContent[], onStartQuiz: (quiz: Quiz) => void }> = ({ user, quizzes, userSubmissions, sharedContent, onStartQuiz }) => {
@@ -128,7 +256,7 @@ const HomePage: React.FC<{ user: User, quizzes: Quiz[], userSubmissions: Submiss
             </div>
             <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{studyBlitz}</div>
             <div className="mt-6 pt-4 border-t border-brand-border">
-               <TTSPlayer text={studyBlitz} />
+               <TTSPlayer text={studyBlitz} language={'English'} />
             </div>
           </div>
         )}
@@ -340,8 +468,9 @@ const AttendancePage: React.FC<{ user: User; sessions: AttendanceSession[], subm
 // ---- Quizzes Page (with Practice tab) ----
 const QuizzesPage: React.FC<{
   availableQuizzes: Quiz[], completedQuizzes: Quiz[], userSubmissions: Submission[],
-  quizResult: { score: number; total: number } | null, onStartQuiz: (quiz: Quiz) => void
-}> = ({ availableQuizzes, completedQuizzes, userSubmissions, quizResult, onStartQuiz }) => {
+  quizResult: { score: number; total: number } | null, onStartQuiz: (quiz: Quiz) => void,
+  user: User, addStudentPerformance: (p: any) => Promise<void>, isOfflineMode: boolean
+}> = ({ availableQuizzes, completedQuizzes, userSubmissions, quizResult, onStartQuiz, user, addStudentPerformance, isOfflineMode }) => {
   const [activeTab, setActiveTab] = useState<'assigned' | 'practice'>('assigned');
   const [practiceTab, setPracticeTab] = useState<'form' | 'taking' | 'result'>('form');
   const [practiceTopic, setPracticeTopic] = useState('');
@@ -351,6 +480,8 @@ const QuizzesPage: React.FC<{
   const [practiceError, setPracticeError] = useState<string | null>(null);
   const [practiceQIndex, setPracticeQIndex] = useState(0);
   const [practiceAnswers, setPracticeAnswers] = useState<(number | null)[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [practiceInsights, setPracticeInsights] = useState<any>(null);
 
   const handleGeneratePractice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -366,12 +497,71 @@ const QuizzesPage: React.FC<{
     finally { setIsGenerating(false); }
   };
 
-  const handlePracticeSubmit = () => {
+  const handlePracticeSubmit = async () => {
     if (!practiceQuiz) return;
     let score = 0;
-    practiceQuiz.questions.forEach((q, i) => { if (practiceAnswers[i] === q.correctAnswerIndex) score++; });
-    setPracticeResult({ score, total: practiceQuiz.questions.length });
+    const incorrect = [] as any[];
+    practiceQuiz.questions.forEach((q, i) => { 
+      if (practiceAnswers[i] === q.correctAnswerIndex) score++; 
+      else incorrect.push({ question: q.questionText, answer: practiceAnswers[i] !== null ? q.options[practiceAnswers[i]!] : 'No Answer' });
+    });
+    const total = practiceQuiz.questions.length;
+    setPracticeResult({ score, total });
     setPracticeTab('result');
+
+    // AI Analysis for Practice
+    setIsAnalyzing(true);
+    try {
+      const response = await fetch('/api/analyze-quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: practiceQuiz.topic,
+          score,
+          total,
+          wrong_questions: incorrect.map(ia => ia.question),
+          mistakes: []
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        let rawResponse = typeof result.response === 'string' ? result.response : JSON.stringify(result.response);
+        
+        let insights: any = { weak_topics: [], strong_topics: [], study_plan: [] };
+        try {
+          const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+          const jsonText = jsonMatch ? jsonMatch[0] : rawResponse;
+          insights = JSON.parse(jsonText);
+        } catch (e) {
+          console.error("Practice AI parse failed", e);
+        }
+        
+        setPracticeInsights(insights);
+        
+        if (addStudentPerformance) {
+           await addStudentPerformance({
+             studentEmail: user.email,
+             quizId: `practice-${Date.now()}`,
+             topic: practiceQuiz.topic,
+             score,
+             totalQuestions: total,
+             analysis: {
+                weak_topics: Array.isArray(insights.weak_topics) ? insights.weak_topics : [],
+                strong_topics: Array.isArray(insights.strong_topics) ? insights.strong_topics : [],
+                medium_topics: [],
+                mistake_analysis: [],
+                study_plan: Array.isArray(insights.study_plan) ? insights.study_plan : [],
+                practice_questions: []
+             }
+           });
+        }
+      }
+    } catch (err) {
+      console.error("Practice analysis failed", err);
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const resetPractice = () => { setPracticeTab('form'); setPracticeQuiz(null); setPracticeResult(null); setPracticeTopic(''); setPracticeError(null); };
@@ -467,6 +657,34 @@ const QuizzesPage: React.FC<{
               <h3 className="text-2xl font-bold text-green-400 mt-2">Practice Complete!</h3>
               <p className="text-4xl font-bold mt-4">{practiceResult.score} / {practiceResult.total}</p>
               <p className="text-gray-400 mt-2">{Math.round((practiceResult.score / practiceResult.total) * 100)}% correct</p>
+
+              {isAnalyzing && (
+                 <div className="mt-8 bg-brand-dark p-6 rounded-xl border border-brand-cyan/30 flex items-center justify-center gap-3">
+                    <div className="w-5 h-5 border-2 border-brand-cyan border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-brand-cyan font-semibold italic">Updating AI Learning Brain with stats...</span>
+                 </div>
+              )}
+
+              {practiceInsights && (
+                 <div className="mt-8 bg-brand-dark-blue border border-brand-border rounded-xl p-6 text-left space-y-6">
+                    <div className="flex items-center gap-2 text-brand-cyan font-bold border-b border-brand-border pb-2"><SparklesIcon /> AI Practice Insights</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <div>
+                          <h4 className="text-xs font-bold text-red-400 uppercase tracking-widest mb-2">🔴 Focus Areas</h4>
+                          <ul className="text-xs space-y-1 text-gray-300">
+                             {practiceInsights.weak_topics?.map((t: string, i: number) => <li key={i}>• {t}</li>)}
+                          </ul>
+                       </div>
+                       <div>
+                          <h4 className="text-xs font-bold text-green-400 uppercase tracking-widest mb-2">🟢 Mastery</h4>
+                          <ul className="text-xs space-y-1 text-gray-300">
+                             {practiceInsights.strong_topics?.map((t: string, i: number) => <li key={i}>• {t}</li>)}
+                          </ul>
+                       </div>
+                    </div>
+                 </div>
+              )}
+
               <div className="mt-8 space-y-4 text-left">
                 {practiceQuiz.questions.map((q, i) => (
                   <div key={i} className={`bg-brand-dark p-4 rounded-lg border-l-4 ${practiceAnswers[i] === q.correctAnswerIndex ? 'border-green-400' : 'border-red-500'}`}>
@@ -485,49 +703,240 @@ const QuizzesPage: React.FC<{
   );
 };
 
-// ---- Analysis Page ----
-const AnalysisPage: React.FC<{ submissions: Submission[], quizzes: Quiz[] }> = ({ submissions, quizzes }) => {
-  if (submissions.length === 0) return (
-    <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8 text-center">
-      <h2 className="text-3xl font-bold mb-4">No Quiz History Found</h2>
-      <p className="text-gray-400">Your performance analysis will appear here after you complete your first quiz.</p>
-    </div>
-  );
+// ---- Analysis Page (AI Learning Brain) ----
+const AnalysisPage: React.FC<{ 
+  submissions: Submission[], 
+  quizzes: Quiz[],
+  performance: StudentPerformance[] 
+}> = ({ submissions, quizzes, performance }) => {
+  const safeSubmissions = Array.isArray(submissions) ? submissions.filter(s => s && typeof s === 'object' && s.score !== undefined) : [];
+  const safePerformance = Array.isArray(performance) ? performance.filter(p => p && p.analysis) : [];
 
-  const totalScore = submissions.reduce((acc, sub) => acc + sub.score, 0);
-  const totalPossibleScore = submissions.reduce((acc, sub) => acc + sub.totalQuestions, 0);
-  const averagePercentage = totalPossibleScore > 0 ? ((totalScore / totalPossibleScore) * 100).toFixed(1) : 0;
-  const getQuizTopic = (quizId: string) => quizzes.find(q => q.id === quizId)?.topic ?? 'Unknown Quiz';
+  try {
+    const totalScore = safeSubmissions.reduce((acc, sub) => acc + (Number(sub.score) || 0), 0);
+    const totalPossible = safeSubmissions.reduce((acc, sub) => acc + (Number(sub.totalQuestions) || 0), 0);
+    const avgPct = totalPossible > 0 ? Math.round((totalScore / totalPossible) * 100) : 0;
 
-  return (
-    <div className="space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-center">
-        <div className="bg-brand-dark p-6 rounded-lg"><p className="text-sm text-gray-400">Total Quizzes Taken</p><p className="text-4xl font-bold mt-2">{submissions.length}</p></div>
-        <div className="bg-brand-dark p-6 rounded-lg"><p className="text-sm text-gray-400">Overall Average Score</p><p className="text-4xl font-bold mt-2">{averagePercentage}%</p></div>
-      </div>
-      <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
-        <h3 className="text-2xl font-bold mb-6">Quiz History</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-brand-dark"><tr><th className="p-4">Quiz Topic</th><th className="p-4">Score</th><th className="p-4">Percentage</th><th className="p-4">Date Completed</th></tr></thead>
-            <tbody>
-              {submissions.map((sub, index) => {
-                const percentage = ((sub.score / sub.totalQuestions) * 100).toFixed(0);
-                return (
-                  <tr key={index} className="border-b border-brand-border">
-                    <td className="p-4 font-semibold">{getQuizTopic(sub.quizId)}</td>
-                    <td className="p-4">{sub.score} / {sub.totalQuestions}</td>
-                    <td className="p-4"><div className="flex items-center gap-2"><div className="w-full bg-gray-600 rounded-full h-2.5"><div className="bg-brand-cyan h-2.5 rounded-full" style={{ width: `${percentage}%` }}></div></div><span className="w-12 text-right">{percentage}%</span></div></td>
-                    <td className="p-4 text-sm text-gray-400">{new Date(sub.submittedAt).toLocaleString()}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+    // Trend: compare last 2 submissions
+    let trend: 'up' | 'down' | 'stable' = 'stable';
+    if (safeSubmissions.length >= 2) {
+      const last = safeSubmissions[safeSubmissions.length - 1];
+      const prev = safeSubmissions[safeSubmissions.length - 2];
+      const lastPct = last.totalQuestions > 0 ? (last.score / last.totalQuestions) * 100 : 0;
+      const prevPct = prev.totalQuestions > 0 ? (prev.score / prev.totalQuestions) * 100 : 0;
+      trend = lastPct > prevPct ? 'up' : lastPct < prevPct ? 'down' : 'stable';
+    }
+
+    // Latest AI insights (the richest data source)
+    const latest = safePerformance.length > 0 ? safePerformance[safePerformance.length - 1] : null;
+    const latestAnalysis = latest?.analysis as any;
+
+    // Aggregate across all for overview columns
+    const allWeakAreas = Array.from(new Set(safePerformance.flatMap(p => (p?.analysis as any)?.weak_topics || []))).filter(Boolean);
+    const allStrongAreas = Array.from(new Set(safePerformance.flatMap(p => (p?.analysis as any)?.strong_topics || []))).filter(Boolean);
+
+    if (safeSubmissions.length === 0) {
+      return (
+        <div className="bg-brand-dark-blue border border-brand-border rounded-2xl p-12 text-center">
+          <div className="w-20 h-20 bg-brand-cyan/10 rounded-full flex items-center justify-center mx-auto mb-6 text-4xl">🧠</div>
+          <h2 className="text-3xl font-bold mb-4 text-white">AI Learner Brain</h2>
+          <p className="text-gray-400 max-w-md mx-auto">Attempt a quiz to unlock your personalized AI learning analysis.</p>
+          <div className="mt-6 p-4 bg-brand-dark rounded-xl border border-brand-border text-sm text-gray-500">
+            The AI will analyze your weak topics, recommend books, YouTube videos, and create a personalized study plan.
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-8">
+        {/* Header */}
+        <div className="bg-gradient-to-br from-brand-dark-blue to-brand-dark border border-brand-border rounded-3xl p-8 relative overflow-hidden">
+          <div className="absolute -right-20 -top-20 w-64 h-64 bg-brand-cyan/10 blur-3xl rounded-full" />
+          <div className="flex flex-col lg:flex-row items-center gap-8 relative z-10">
+            <div className="w-24 h-24 bg-brand-cyan/20 rounded-full flex items-center justify-center text-4xl border-2 border-brand-cyan/30 animate-pulse shadow-[0_0_40px_rgba(6,182,212,0.2)]">
+              🧠
+            </div>
+            <div className="flex-1 text-center lg:text-left">
+              <h2 className="text-3xl font-extrabold text-white mb-1">AI Learner Brain</h2>
+              <p className="text-gray-400">Analyzing <span className="text-brand-cyan font-bold">{safeSubmissions.length} assessments</span> · Tracking your cognitive trajectory</p>
+              {trend !== 'stable' && (
+                <div className={`inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full text-xs font-bold ${trend === 'up' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                  {trend === 'up' ? '📈 Improving since last quiz!' : '📉 Score declined — review weak areas'}
+                </div>
+              )}
+            </div>
+            <div className="bg-brand-dark/50 p-6 rounded-2xl border border-brand-border backdrop-blur-md text-center">
+              <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Total Accuracy</p>
+              <p className={`text-5xl font-black ${avgPct >= 70 ? 'text-green-400' : avgPct >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>{avgPct}%</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Latest Quiz Deep Analysis */}
+        {latestAnalysis && (
+          <div className="bg-brand-dark-blue border border-brand-border rounded-2xl p-6 space-y-6">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-bold text-brand-cyan flex items-center gap-2">🔬 Latest Quiz Analysis: <span className="text-white">{latest?.topic}</span></h3>
+              <span className="text-xs text-gray-500 bg-brand-dark px-3 py-1 rounded-full border border-brand-border">
+                Score: {latest?.score}/{latest?.totalQuestions}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Weak Topics + Reason */}
+              <div className="bg-red-900/10 border border-red-500/20 rounded-xl p-5">
+                <h4 className="font-bold text-red-400 mb-3 flex items-center gap-2">🚩 Weak Topics</h4>
+                <ul className="text-sm space-y-1 mb-4">
+                  {(latestAnalysis.weak_topics || []).map((t: string, i: number) => (
+                    <li key={i} className="flex gap-2 text-gray-300"><span className="text-red-400">•</span>{t}</li>
+                  ))}
+                  {!(latestAnalysis.weak_topics?.length) && <li className="text-gray-500 italic">No weak topics detected</li>}
+                </ul>
+                {latestAnalysis.reason && (
+                  <div className="bg-red-900/20 p-3 rounded-lg border border-red-500/30">
+                    <p className="text-xs font-bold text-red-400 uppercase mb-1">Why:</p>
+                    <p className="text-xs text-gray-300">{latestAnalysis.reason}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* What to Learn + Motivation */}
+              <div className="bg-brand-cyan/5 border border-brand-cyan/20 rounded-xl p-5">
+                <h4 className="font-bold text-brand-cyan mb-3">🚀 What to Learn Next</h4>
+                <ul className="text-sm space-y-1 mb-4">
+                  {(latestAnalysis.what_to_learn_next || []).map((t: string, i: number) => (
+                    <li key={i} className="flex gap-2 text-gray-300"><span className="text-brand-cyan">→</span>{t}</li>
+                  ))}
+                  {!(latestAnalysis.what_to_learn_next?.length) && <li className="text-gray-500 italic">Keep practicing to unlock suggestions</li>}
+                </ul>
+                {latestAnalysis.motivation && (
+                  <p className="text-xs italic text-brand-cyan bg-brand-cyan/20 p-3 rounded-lg border border-brand-cyan/30">
+                    💬 "{latestAnalysis.motivation}"
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Books + YouTube */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-brand-dark p-5 rounded-xl border border-brand-border">
+                <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">📚 Recommended Books</h4>
+                <div className="space-y-3">
+                  {(latestAnalysis.books || []).map((b: any, i: number) => (
+                    <div key={i} className="text-xs border-l-2 border-brand-cyan pl-3">
+                      <p className="font-bold text-white">{b.name}</p>
+                      <p className="text-gray-400 mt-0.5">{b.reason}</p>
+                    </div>
+                  ))}
+                  {!(latestAnalysis.books?.length) && <p className="text-gray-500 text-xs italic">No book recommendations yet</p>}
+                </div>
+              </div>
+              <div className="bg-brand-dark p-5 rounded-xl border border-brand-border">
+                <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">🎥 YouTube Videos</h4>
+                <div className="space-y-2">
+                  {(latestAnalysis.youtube || []).map((y: any, i: number) => (
+                    <a
+                      key={i}
+                      href={`https://www.youtube.com/results?search_query=${encodeURIComponent(y.query || y.topic + ' explained')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block p-3 bg-brand-dark-blue rounded-lg border border-brand-border hover:border-brand-cyan transition-all"
+                    >
+                      <p className="text-xs font-bold text-brand-cyan">{y.topic}</p>
+                      <p className="text-[10px] text-gray-500 mt-0.5">🔗 {y.query}</p>
+                    </a>
+                  ))}
+                  {!(latestAnalysis.youtube?.length) && <p className="text-gray-500 text-xs italic">No video recommendations yet</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Overview: All Weak/Strong + Performance Log */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-brand-dark-blue border border-brand-border rounded-2xl p-6">
+            <h3 className="text-lg font-bold text-red-400 mb-4 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" /> Overall Weak Areas
+            </h3>
+            <ul className="space-y-2">
+              {allWeakAreas.length > 0 ? allWeakAreas.slice(0, 6).map((topic, i) => (
+                <li key={i} className="flex gap-3 bg-red-500/5 p-3 rounded-xl border border-red-500/10 text-sm text-gray-300">
+                  <span className="text-red-500">🔻</span>{topic as string}
+                </li>
+              )) : <p className="text-xs text-gray-500 italic">No weak areas detected yet.</p>}
+            </ul>
+          </div>
+          <div className="bg-brand-dark-blue border border-brand-border rounded-2xl p-6">
+            <h3 className="text-lg font-bold text-green-400 mb-4 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-green-500" /> Cognitive Strengths
+            </h3>
+            <ul className="space-y-2">
+              {allStrongAreas.length > 0 ? allStrongAreas.slice(0, 6).map((topic, i) => (
+                <li key={i} className="flex gap-3 bg-green-500/5 p-3 rounded-xl border border-green-500/10 text-sm text-gray-300">
+                  <span className="text-green-500">🟢</span>{topic as string}
+                </li>
+              )) : <p className="text-xs text-gray-500 italic">Analyzing your strengths...</p>}
+            </ul>
+          </div>
+        </div>
+
+        {/* Recent Performance Log */}
+        <div className="bg-brand-dark-blue border border-brand-border rounded-3xl p-8">
+          <h3 className="text-2xl font-bold mb-6 flex items-center gap-3"><FileTextIcon /> Recent Performance Log</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-brand-border">
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase">Assessment</th>
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase">Score</th>
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase">Status</th>
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-brand-border">
+                {safeSubmissions.slice(0, 5).map((sub, index) => {
+                  const quiz = Array.isArray(quizzes) ? quizzes.find(q => q.id === sub.quizId) : null;
+                  const perc = sub.totalQuestions > 0 ? (sub.score / sub.totalQuestions) * 100 : 0;
+                  return (
+                    <tr key={index} className="hover:bg-brand-dark/30 transition-colors">
+                      <td className="p-4">
+                        <p className="font-bold text-white">{quiz?.topic || 'Assessment'}</p>
+                        <p className="text-[10px] text-gray-500">ID: {sub.quizId?.toString().slice(0, 8)}</p>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <span className={`text-sm font-black ${perc >= 70 ? 'text-green-400' : perc >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>{sub.score}/{sub.totalQuestions}</span>
+                          <div className="w-24 bg-gray-800 rounded-full h-2 overflow-hidden hidden sm:block">
+                            <div className={`h-full rounded-full ${perc >= 70 ? 'bg-green-500' : perc >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${perc}%` }} />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span className={`text-xs px-2 py-0.5 rounded border ${perc >= 70 ? 'bg-green-500/10 border-green-500/30 text-green-400' : perc >= 40 ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                          {perc >= 70 ? 'Mastery' : perc >= 40 ? 'Improving' : 'Needs Work'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-[10px] text-gray-500 font-mono">{sub.submittedAt ? new Date(sub.submittedAt).toLocaleDateString() : 'N/A'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  } catch (err) {
+    console.error('AI Brain Render Error', err);
+    return (
+      <div className="bg-red-900/20 border border-red-500 rounded-lg p-8 text-center">
+        <h2 className="text-xl font-bold text-red-400 mb-2">AI Brain Error</h2>
+        <p className="text-gray-400 text-sm">Take another quiz to recalibrate.</p>
+      </div>
+    );
+  }
 };
 
 // ---- Shared Content Page ----
@@ -696,7 +1105,7 @@ const SharedContentPage: React.FC<{ content: SharedContent[] }> = ({ content }) 
             </div>
             {aiResult && (
               <div className="mt-4 pt-4 border-t border-brand-border">
-                <TTSPlayer text={aiResult.text} />
+                <TTSPlayer text={aiResult.text} language={'English'} />
               </div>
             )}
           </div>
@@ -754,45 +1163,47 @@ const DoubtSolverPage: React.FC<{ assistanceDisabled: boolean }> = ({ assistance
   const TEACH_STYLES = ['Standard', 'Explain Like I am 5', 'Use Analogies', 'Socratic Method', 'Extremely Detailed'];
   const LANGUAGES = ['English', 'Marathi', 'Hindi'];
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [conversation]);
+  // Load chat history
+  useEffect(() => {
+    const saved = localStorage.getItem('doubt_solver_chats');
+    if (saved) {
+      try {
+        setConversation(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to load chat history", e);
+      }
+    }
+  }, []);
+
+  // Save chat history
+  useEffect(() => {
+    if (conversation.length > 0) {
+      localStorage.setItem('doubt_solver_chats', JSON.stringify(conversation));
+    }
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [conversation]);
 
   if (assistanceDisabled) {
     return (
       <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-12 text-center">
         <div className="text-6xl mb-4">🔒</div>
         <h2 className="text-2xl font-bold mb-3">AI Assistance Disabled</h2>
-        <p className="text-gray-400">Your teacher has temporarily disabled the AI Doubt Solver. This is usually done during exams or assessments to ensure academic integrity.</p>
-        <p className="text-gray-500 text-sm mt-4">Please contact your teacher if you have questions.</p>
+        <p className="text-gray-400">Your teacher has temporarily disabled the AI Doubt Solver.</p>
       </div>
     );
   }
 
   const handleMicClick = () => {
     if (!('webkitSpeechRecognition' in window)) {
-      alert("Your browser does not support Speech Recognition. Please try Chrome or Edge.");
+      alert("Speech Recognition not supported.");
       return;
     }
     const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    
-    // Set recognition language based on selection
-    if (selectedLanguage === 'Marathi') recognition.lang = 'mr-IN';
-    else if (selectedLanguage === 'Hindi') recognition.lang = 'hi-IN';
-    else recognition.lang = 'en-US';
-
+    recognition.lang = selectedLanguage === 'Marathi' ? 'mr-IN' : (selectedLanguage === 'Hindi' ? 'hi-IN' : 'en-US');
     recognition.onstart = () => setIsListening(true);
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setCurrentQuestion(prev => (prev + ' ' + transcript).trim());
-    };
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error", event.error);
-      setIsListening(false);
-    };
+    recognition.onresult = (event: any) => setCurrentQuestion(event.results[0][0].transcript);
     recognition.onend = () => setIsListening(false);
-
     recognition.start();
   };
 
@@ -804,63 +1215,40 @@ const DoubtSolverPage: React.FC<{ assistanceDisabled: boolean }> = ({ assistance
     setCurrentQuestion('');
     setIsLoading(true);
     try {
-      const prompt = learningStyle !== 'Standard' ? `Using the "${learningStyle}" teaching style, answer this: ${userMessage.text}` : userMessage.text;
+      const prompt = learningStyle !== 'Standard' ? `Style: ${learningStyle}. Question: ${userMessage.text}` : userMessage.text;
       const explanation = await getExplanation(prompt, selectedLanguage);
       setConversation(prev => [...prev, { sender: 'ai', text: explanation }]);
     } catch (err: any) {
-      setConversation(prev => [...prev, { sender: 'ai', text: `I am temporarily offline or unavailable. Please consult your teacher for this query.` }]);
+      setConversation(prev => [...prev, { sender: 'ai', text: `Sorry, system is offline.` }]);
     } finally { setIsLoading(false); }
   };
 
   return (
     <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-6 flex flex-col h-[75vh]">
-      <div className="flex justify-between items-center mb-4 border-b border-brand-border pb-4 gap-4 flex-wrap">
-        <h2 className="text-2xl font-bold flex items-center gap-2"><HelpCircleIcon /> AI Teaching Assistant</h2>
-        <div className="flex items-center gap-3 flex-wrap">
-           <div className="flex items-center gap-2 bg-brand-dark p-2 rounded-lg">
-              <span className="text-xs font-semibold text-gray-400 uppercase">Style:</span>
-              <select value={learningStyle} onChange={e => setLearningStyle(e.target.value)} className="bg-brand-dark-blue text-white text-sm py-1 px-2 rounded border border-brand-border focus:outline-none focus:border-brand-cyan">
-                 {TEACH_STYLES.map(style => <option key={style} value={style}>{style}</option>)}
-              </select>
-           </div>
-           <div className="flex items-center gap-2 bg-brand-dark p-2 rounded-lg">
-              <span className="text-xs font-semibold text-gray-400 uppercase">Lang:</span>
-              <select value={selectedLanguage} onChange={e => setSelectedLanguage(e.target.value)} className="bg-brand-dark-blue text-white text-sm py-1 px-2 rounded border border-brand-border focus:outline-none focus:border-brand-cyan">
-                 {LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}
-              </select>
-           </div>
+      <div className="flex justify-between items-center mb-4 border-b border-brand-border pb-4">
+        <h2 className="text-2xl font-bold flex items-center gap-2"><HelpCircleIcon /> Doubt Solver</h2>
+        <div className="flex gap-2">
+           <select value={selectedLanguage} onChange={e => setSelectedLanguage(e.target.value)} className="bg-brand-dark border border-brand-border rounded px-2 py-1 text-sm">
+              {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
+           </select>
         </div>
       </div>
-      <div className="flex-grow overflow-y-auto pr-4 space-y-4 mb-4">
+      <div className="flex-grow overflow-y-auto pr-4 space-y-4 mb-4 scrollbar-hide">
         {conversation.map((msg, index) => (
           <div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-xl p-3 rounded-lg ${msg.sender === 'user' ? 'bg-brand-light-blue text-white' : 'bg-brand-dark'} relative group`}>
-              <p className="whitespace-pre-wrap">{msg.text}</p>
-              {msg.sender === 'ai' && (
-                <div className="mt-3 pt-2 border-t border-brand-border">
-                  <TTSPlayer text={msg.text} />
-                </div>
-              )}
+            <div className={`max-w-[80%] p-3 rounded-2xl ${msg.sender === 'user' ? 'bg-brand-cyan text-brand-dark font-semibold' : 'bg-brand-dark text-gray-200 border border-brand-border'}`}>
+              <p className="whitespace-pre-wrap text-sm">{msg.text}</p>
+              <p className="text-[9px] mt-1 opacity-50">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
             </div>
           </div>
         ))}
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="max-w-xl p-3 rounded-lg bg-brand-dark flex items-center gap-2">
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-            </div>
-          </div>
-        )}
+        {isLoading && <div className="text-brand-cyan animate-pulse text-xs italic">AI is thinking...</div>}
         <div ref={chatEndRef} />
       </div>
-      <form onSubmit={handleSubmitQuestion} className="flex gap-4 border-t border-brand-border pt-4 items-center">
-        <button type="button" onClick={handleMicClick} className={`p-3 rounded-full flex-shrink-0 transition-all ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-brand-dark border border-brand-border text-gray-400 hover:text-brand-cyan hover:border-brand-cyan'}`} title={`Use Microphone (${selectedLanguage})`}>
-           🎙️
-        </button>
-        <textarea value={currentQuestion} onChange={e => setCurrentQuestion(e.target.value)} placeholder={`Ask in ${selectedLanguage}... (e.g., What is photosynthesis?)`} className="flex-grow bg-brand-dark border border-brand-border rounded-lg p-3 text-white focus:ring-2 focus:ring-brand-cyan focus:outline-none resize-none" rows={2} disabled={isLoading} />
-        <button type="submit" disabled={isLoading || !currentQuestion.trim()} className="bg-brand-cyan text-white font-bold py-2 px-6 rounded-lg hover:bg-cyan-500 disabled:bg-cyan-800 disabled:cursor-not-allowed self-stretch">Ask</button>
+      <form onSubmit={handleSubmitQuestion} className="flex gap-3 bg-brand-dark p-2 rounded-xl border border-brand-border">
+        <button type="button" onClick={handleMicClick} className={`p-3 rounded-lg transition-all ${isListening ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 hover:text-brand-cyan'}`}>🎙️</button>
+        <input value={currentQuestion} onChange={e => setCurrentQuestion(e.target.value)} placeholder="Ask your doubt..." className="flex-grow bg-transparent border-none focus:ring-0 text-white" disabled={isLoading} />
+        <button type="submit" disabled={isLoading || !currentQuestion.trim()} className="bg-brand-cyan text-brand-dark font-bold px-6 py-2 rounded-lg hover:scale-105 transition-all">Send</button>
       </form>
     </div>
   );
@@ -996,7 +1384,7 @@ const LecturesPage: React.FC<{ videoLectures: VideoLecture[], generatedLectures:
               ) : (
                 <>
                   <div className="mb-4">
-                    <TTSPlayer text={lecture.slides.map(s => s.title + '. ' + s.points.join('. ')).join('. ')} />
+                    <TTSPlayer text={lecture.slides.map(s => s.title + '. ' + s.points.join('. ')).join('. ')} language={preferredLang.includes('+') ? 'English' : preferredLang as any} />
                   </div>
                   {lecture.slides.map((slide, i) => {
                 const targetLang = preferredLang.includes('+') ? preferredLang.split('+')[1] : preferredLang;
@@ -1112,38 +1500,100 @@ const CurriculumPage: React.FC<{ curriculumPlans: CurriculumPlan[] }> = ({ curri
 };
 
 // ---- Quiz Taker ----
-const QuizTaker: React.FC<{ quiz: Quiz; onComplete: (score: number, total: number) => void }> = ({ quiz, onComplete }) => {
+const QuizTaker: React.FC<{ quiz: Quiz; onComplete: (score: number, total: number, incorrectAnswers: any[]) => void }> = ({ quiz, onComplete }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<(number | null)[]>(Array(quiz.questions.length).fill(null));
+  const [timeLeft, setTimeLeft] = useState(5 * 60);
+  const selectedAnswersRef = React.useRef(selectedAnswers);
+  selectedAnswersRef.current = selectedAnswers;
+
+  const buildAndSubmit = React.useCallback(() => {
+    let score = 0;
+    const items = quiz.questions.map((q, index) => {
+      const isCorrect = selectedAnswersRef.current[index] === q.correctAnswerIndex;
+      if (isCorrect) score++;
+      return {
+        questionText: q.questionText,
+        isCorrect,
+        userAnswer: selectedAnswersRef.current[index] !== null ? q.options[selectedAnswersRef.current[index]!] : 'No Answer',
+        correctAnswer: q.options[q.correctAnswerIndex]
+      };
+    });
+    onComplete(score, quiz.questions.length, items.filter(it => !it.isCorrect));
+  }, [quiz, onComplete]);
+
+  useEffect(() => {
+    if (timeLeft <= 0) { buildAndSubmit(); return; }
+    const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft, buildAndSubmit]);
 
   const handleSelectAnswer = (optionIndex: number) => {
-    const newAnswers = [...selectedAnswers]; newAnswers[currentQuestionIndex] = optionIndex; setSelectedAnswers(newAnswers);
+    const newAnswers = [...selectedAnswers];
+    newAnswers[currentQuestionIndex] = optionIndex;
+    setSelectedAnswers(newAnswers);
   };
 
-  const handleSubmit = () => {
-    let score = 0;
-    quiz.questions.forEach((q, index) => { if (selectedAnswers[index] === q.correctAnswerIndex) score++; });
-    onComplete(score, quiz.questions.length);
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
   const currentQuestion = quiz.questions[currentQuestionIndex];
 
   return (
     <div className="max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold mb-2 text-center text-brand-cyan">{quiz.topic}</h1>
-      <p className="text-center text-gray-400 mb-8">Question {currentQuestionIndex + 1} of {quiz.questions.length}</p>
-      <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
-        <p className="text-xl font-semibold mb-6">{currentQuestion.questionText}</p>
-        <div className="space-y-3">
+      <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-center text-brand-cyan">{quiz.topic}</h1>
+          <div className="bg-brand-dark p-3 rounded-xl border border-brand-cyan flex items-center gap-3">
+             <span className="text-xs font-bold text-gray-500 uppercase">Time Remaining</span>
+             <span className={`text-xl font-mono font-bold ${timeLeft < 30 ? 'text-red-500 animate-pulse' : 'text-brand-cyan'}`}>{formatTime(timeLeft)}</span>
+          </div>
+      </div>
+      <p className="text-center text-gray-400 mb-8 font-bold">Question {currentQuestionIndex + 1} of {quiz.questions.length}</p>
+      
+      <div className="bg-brand-dark-blue border border-brand-border rounded-2xl p-8 shadow-2xl">
+        <p className="text-xl font-semibold mb-8 text-white">{currentQuestion.questionText}</p>
+        <div className="grid grid-cols-1 gap-4">
           {currentQuestion.options.map((option, index) => (
-            <button key={index} onClick={() => handleSelectAnswer(index)} className={`w-full text-left p-4 rounded-lg border-2 transition-colors duration-200 ${selectedAnswers[currentQuestionIndex] === index ? 'bg-brand-cyan border-cyan-300 text-white' : 'bg-brand-dark border-brand-border hover:border-brand-cyan'}`}>{option}</button>
+            <button 
+                key={index} 
+                onClick={() => handleSelectAnswer(index)} 
+                className={`w-full text-left p-5 rounded-xl border-2 transition-all duration-200 ${
+                  selectedAnswers[currentQuestionIndex] === index 
+                    ? 'bg-brand-cyan border-brand-cyan text-brand-dark font-bold scale-[1.02]' 
+                    : 'bg-brand-dark border-brand-border hover:border-brand-cyan/50 text-gray-300'
+                }`}
+            >
+                <span className="mr-4 opacity-50">{String.fromCharCode(65 + index)}.</span>
+                {option}
+            </button>
           ))}
         </div>
-        <div className="mt-8 flex justify-end">
+        <div className="mt-12 flex justify-between items-center">
+          <button 
+            onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))} 
+            disabled={currentQuestionIndex === 0}
+            className="px-8 py-3 rounded-xl font-bold border border-brand-border text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+          >
+            PREVIOUS
+          </button>
+          
           {currentQuestionIndex < quiz.questions.length - 1 ? (
-            <button onClick={() => setCurrentQuestionIndex(currentQuestionIndex + 1)} className="bg-brand-cyan text-white font-semibold py-2 px-6 rounded-lg hover:bg-cyan-500">Next</button>
+            <button 
+                onClick={() => setCurrentQuestionIndex(prev => prev + 1)} 
+                className="bg-brand-cyan text-brand-dark font-bold py-3 px-10 rounded-xl hover:scale-105 transition-all shadow-lg shadow-brand-cyan/20"
+            >
+                NEXT
+            </button>
           ) : (
-            <button onClick={handleSubmit} className="bg-green-600 text-white font-semibold py-2 px-6 rounded-lg hover:bg-green-700">Submit Quiz</button>
+            <button 
+                onClick={buildAndSubmit} 
+                className="bg-green-600 text-white font-bold py-3 px-10 rounded-xl hover:bg-green-500 hover:scale-105 transition-all shadow-lg shadow-green-600/20"
+            >
+                FINISH ASSESSMENT
+            </button>
           )}
         </div>
       </div>
@@ -1266,15 +1716,15 @@ const StudyModePage: React.FC<{
 
           {incompleteLectures.length > 0 && (
             <div>
-               <h3 className="text-xl font-bold mb-3">1. Watch these Lectures</h3>
+               <h3 className="text-xl font-bold mb-3">1. Review AI Notes</h3>
                <div className="space-y-3">
                  {incompleteLectures.map(vl => (
                    <div key={vl.id} className="bg-brand-dark p-4 rounded-lg flex justify-between items-center border-l-4 border-yellow-500">
                      <div>
                        <h4 className="font-semibold">{vl.topic}</h4>
-                       <p className="text-xs text-gray-400 mt-1">Video Lecture</p>
+                       <p className="text-xs text-gray-400 mt-1">Topic-Based Notes</p>
                      </div>
-                     <button onClick={() => onNavigate('lectures')} className="bg-brand-dark-blue text-white py-1 px-4 text-sm rounded border border-brand-border hover:bg-brand-cyan transition">Go to Lectures</button>
+                     <button onClick={() => onNavigate('lectures')} className="bg-brand-dark-blue text-white py-1 px-4 text-sm rounded border border-brand-border hover:bg-brand-cyan transition">Go to AI Notes</button>
                    </div>
                  ))}
                </div>
@@ -1325,21 +1775,27 @@ const StudyModePage: React.FC<{
 const StudentPortal: React.FC<StudentPortalProps> = ({
   quizzes, onLogout, user, addSubmission, studentSubmissions, sharedContent,
   generatedLectures, generatedCaseStudies, faqs, attendanceSessions, addAttendanceRecord,
-  videoLectures, curriculumPlans, assistanceDisabled, submitAttendance, updateLectureProgress, assignments, assignmentSubmissions, addAssignmentSubmission
+  videoLectures, curriculumPlans, assistanceDisabled, submitAttendance, updateLectureProgress, assignments, assignmentSubmissions, addAssignmentSubmission,
+  studentPerformance, addStudentPerformance,
+  isOfflineMode, toggleOfflineMode
 }) => {
   const [activePage, setActivePage] = useState('home');
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [quizResult, setQuizResult] = useState<{ score: number; total: number } | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [quizInsights, setQuizInsights] = useState<any | null>(null);
 
   const navItems = [
     { id: 'home', label: 'Home', icon: <HomeIcon /> },
     { id: 'study-mode', label: 'One Click Study Mode', icon: <SparklesIcon /> },
+    { id: 'assistance', label: 'AI Learner Brain', icon: <SparklesIcon /> },
+    { id: 'vidya-ai', label: 'Vidya AI', icon: <SparklesIcon /> },
+    { id: 'faq', label: 'Help Center', icon: <HelpCircleIcon /> },
     { id: 'assignments', label: 'Assignments', icon: <FileTextIcon /> },
     { id: 'quizzes', label: 'Quizzes', icon: <QuizIcon /> },
-    { id: 'lectures', label: 'Lectures', icon: <FileTextIcon /> },
+    { id: 'lectures', label: 'AI Notes', icon: <FileTextIcon /> },
     { id: 'file-information', label: 'File Information', icon: <ShareIcon /> },
     { id: 'attendance', label: 'Attendance', icon: <UserCheckIcon /> },
-    { id: 'analysis', label: 'Analysis', icon: <VisualizationIcon /> },
     { id: 'curriculum', label: 'Value Added Recommendations', icon: <BookOpenIcon /> },
     { id: 'doubt-solver', label: 'Doubt Solver', icon: <HelpCircleIcon /> },
   ];
@@ -1363,9 +1819,10 @@ const StudentPortal: React.FC<StudentPortalProps> = ({
   const availableAssignments = assignments.filter(a => !assignmentSubmissions.some(s => s.assignmentId === a.id));
   const incompleteLectures = videoLectures.filter(vl => vl.sourceType === 'video' && !vl.completions.some(c => c.studentEmail === user.email && c.completed));
 
-  const handleStartQuiz = (quiz: Quiz) => { setActiveQuiz(quiz); setQuizResult(null); };
+  const handleStartQuiz = (quiz: Quiz) => { setActiveQuiz(quiz); setQuizResult(null); setQuizInsights(null); };
 
-  const handleQuizComplete = async (score: number, total: number) => {
+  const handleQuizComplete = async (score: number, total: number, incorrectAnswers: any[]) => {
+
     setQuizResult({ score, total });
     if (activeQuiz && user.classCode) {
       await addSubmission({ 
@@ -1376,6 +1833,74 @@ const StudentPortal: React.FC<StudentPortalProps> = ({
         totalQuestions: total, 
         classCode: user.classCode 
       });
+
+      // AI Analysis Trigger
+      setIsAnalyzing(true);
+
+      try {
+        const response = await fetch('/api/analyze-quiz', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic: activeQuiz.topic,
+            score,
+            total,
+            wrong_questions: incorrectAnswers.map(ia => ia.questionText || ia.question || 'Unknown Question'),
+            mistakes: []
+          })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          // Server now returns pre-parsed object OR string — handle both
+          let insights: any = result.response;
+          if (typeof insights === 'string') {
+            try {
+              const jsonMatch = insights.match(/\{[\s\S]*\}/);
+              insights = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(insights);
+            } catch (e) {
+              insights = {};
+            }
+          }
+          // Ensure all fields exist
+          insights = {
+            weak_topics: [], reason: '', what_to_learn_next: [], books: [], youtube: [], motivation: '',
+            ...insights
+          };
+
+          setQuizInsights(insights);
+          
+          if (addStudentPerformance) {
+            await addStudentPerformance({
+              studentEmail: user.email,
+              quizId: activeQuiz.id,
+              topic: activeQuiz.topic,
+              score,
+              totalQuestions: total,
+              analysis: {
+                 weak_topics: Array.isArray(insights.weak_topics) ? insights.weak_topics : [],
+                 reason: insights.reason || "",
+                 what_to_learn_next: Array.isArray(insights.what_to_learn_next) ? insights.what_to_learn_next : [],
+                 books: Array.isArray(insights.books) ? insights.books : [],
+                 youtube: Array.isArray(insights.youtube) ? insights.youtube : [],
+                 motivation: insights.motivation || "",
+                 strong_topics: Array.isArray(insights.strong_topics) ? insights.strong_topics : [],
+                 medium_topics: [],
+                 mistake_analysis: [],
+                 study_plan: Array.isArray(insights.study_plan) ? insights.study_plan : [],
+                 practice_questions: []
+              }
+            });
+          }
+        } else {
+           throw new Error("AI Failed");
+        }
+      } catch (err) {
+        console.error("Analysis failed", err);
+        setQuizInsights({ error: "AI insights not available. Check local AI (Ollama)." });
+      } finally {
+        setIsAnalyzing(false);
+      }
     }
     setActiveQuiz(null);
     setActivePage('quizzes');
@@ -1391,11 +1916,13 @@ const StudentPortal: React.FC<StudentPortalProps> = ({
 
   return (
     <div className="flex">
-      <Sidebar activePage={activePage} onNavigate={setActivePage} title={<>Student<br/>Dashboard</>} navItems={navItems} />
+      <Sidebar activePage={activePage} onNavigate={setActivePage} title={<>Student<br/>Dashboard</>} navItems={navItems} isOfflineMode={isOfflineMode} toggleOfflineMode={toggleOfflineMode} />
       <div className="flex-1 ml-64">
         <div className="p-8 max-w-7xl mx-auto">
           <header className="flex justify-between items-center mb-8 gap-8">
-            <h1 className="text-4xl font-bold text-brand-cyan capitalize whitespace-nowrap">{activePage.replace(/-/g, ' ')}</h1>
+            <h1 className="text-4xl font-bold text-brand-cyan capitalize whitespace-nowrap">
+               {activePage.replace(/-/g, ' ')}
+            </h1>
             <SmartSearch knowledgeBase={knowledgeBase} />
             <div className="flex items-center gap-4 flex-shrink-0">
               <span className="text-gray-400">Welcome, {user.name}</span>
@@ -1406,12 +1933,62 @@ const StudentPortal: React.FC<StudentPortalProps> = ({
             {activePage === 'home' && <HomePage user={user} quizzes={quizzes} userSubmissions={userSubmissions} sharedContent={sharedContent} onStartQuiz={handleStartQuiz} />}
             {activePage === 'study-mode' && <StudyModePage availableQuizzes={availableQuizzes} availableAssignments={availableAssignments} incompleteLectures={incompleteLectures} onStartQuiz={handleStartQuiz} onNavigate={setActivePage} />}
             {activePage === 'assignments' && <StudentAssignmentsPage assignments={assignments} assignmentSubmissions={assignmentSubmissions} addAssignmentSubmission={addAssignmentSubmission} user={user} />}
-            {activePage === 'quizzes' && <QuizzesPage availableQuizzes={availableQuizzes} completedQuizzes={completedQuizzes} userSubmissions={userSubmissions} quizResult={quizResult} onStartQuiz={handleStartQuiz} />}
+            {activePage === 'quizzes' && (
+              <div className="space-y-8">
+                {isAnalyzing && (
+                  <div className="bg-brand-dark p-6 rounded-xl border border-brand-cyan/30">
+                    <div className="text-brand-cyan font-bold flex items-center gap-2">
+                       <div className="w-4 h-4 border-2 border-brand-cyan border-t-transparent rounded-full animate-spin"></div>
+                       Analyzing your performance...
+                    </div>
+                  </div>
+                )}
+                {quizInsights && (
+                   <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8 space-y-6">
+                      <h3 className="text-2xl font-bold flex items-center gap-2">AI Performance Insights</h3>
+                      {quizInsights.error ? (
+                        <p className="text-red-400">{quizInsights.error}</p>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                           <div className="space-y-4">
+                              <div>
+                                 <h4 className="text-sm font-bold text-red-400 uppercase tracking-widest mb-2">🔴 Weak Areas</h4>
+                                 <ul className="list-disc list-inside text-gray-300">
+                                    {(quizInsights.weak_topics || []).map((t: string, i: number) => <li key={i}>{t}</li>)}
+                                 </ul>
+                              </div>
+                              <div>
+                                 <h4 className="text-sm font-bold text-green-400 uppercase tracking-widest mb-2">🟢 Strong Areas</h4>
+                                 <ul className="list-disc list-inside text-gray-300">
+                                    {(quizInsights.strong_topics || []).map((t: string, i: number) => <li key={i}>{t}</li>)}
+                                 </ul>
+                              </div>
+                           </div>
+                           <div className="bg-brand-dark p-6 rounded-lg border border-brand-border">
+                              <h4 className="text-sm font-bold text-brand-cyan uppercase tracking-widest mb-4">📘 Study Plan</h4>
+                              <ul className="space-y-2">
+                                 {(quizInsights.study_plan || []).map((p: string, i: number) => (
+                                    <li key={i} className="flex gap-2 text-sm text-gray-400">
+                                       <span className="text-brand-cyan">•</span>
+                                       {p}
+                                    </li>
+                                 ))}
+                              </ul>
+                           </div>
+                        </div>
+                      )}
+                   </div>
+                )}
+                <QuizzesPage availableQuizzes={availableQuizzes} completedQuizzes={completedQuizzes} userSubmissions={userSubmissions} quizResult={quizResult} onStartQuiz={handleStartQuiz} user={user} addStudentPerformance={addStudentPerformance} isOfflineMode={isOfflineMode} />
+              </div>
+            )}
             {activePage === 'lectures' && <LecturesPage videoLectures={videoLectures} generatedLectures={generatedLectures} userEmail={user.email} updateLectureProgress={updateLectureProgress} />}
             {activePage === 'file-information' && <SharedContentPage content={sharedContent} />}
             {activePage === 'attendance' && <AttendancePage user={user} sessions={attendanceSessions} submitAttendance={submitAttendance} />}
-            {activePage === 'analysis' && <AnalysisPage submissions={userSubmissions} quizzes={quizzes} />}
             {activePage === 'curriculum' && <CurriculumPage curriculumPlans={curriculumPlans} />}
+            {activePage === 'vidya-ai' && <VidyaAI userRole="student" classCode={user.classCode!} />}
+            {activePage === 'assistance' && <AnalysisPage submissions={userSubmissions} quizzes={quizzes} performance={studentPerformance} />}
+            {activePage === 'faq' && <FAQPage faqs={faqs} />}
             {activePage === 'doubt-solver' && <DoubtSolverPage assistanceDisabled={assistanceDisabled} />}
           </main>
         </div>

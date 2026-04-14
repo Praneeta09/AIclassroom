@@ -79,6 +79,8 @@ export interface SharedContent {
 export interface LectureSlide {
   title: string;
   points: string[];
+  visualSuggestion?: string;
+  visual?: string;
 }
 
 export interface GeneratedLecture {
@@ -97,6 +99,23 @@ export interface CaseStudy {
   solution: string;
   conclusion: string;
   classCode: string;
+  status?: CurriculumStatus;
+}
+
+export interface AnimationScene {
+  visual: string;
+  voiceScript: string;
+}
+
+export interface AnimationScript {
+  id: string;
+  title: string;
+  topic: string;
+  scenes: AnimationScene[];
+  classCode: string;
+  videoUrl?: string;
+  summary?: string;
+  createdAt: string;
   status?: CurriculumStatus;
 }
 
@@ -181,6 +200,50 @@ export interface ExamSection {
   title: string;
   instructions?: string;
   questions: ExamQuestion[];
+}
+
+export interface PerformanceAnalysis {
+  weak_topics: string[];
+  medium_topics: string[];
+  strong_topics: string[];
+  mistake_analysis: string[];
+  study_plan: string[];
+  practice_questions: Question[];
+}
+
+export interface StudentPerformance {
+  id: string;
+  studentEmail: string;
+  quizId: string;
+  topic: string;
+  score: number;
+  totalQuestions: number;
+  analysis: PerformanceAnalysis;
+  timestamp: string;
+}
+
+export interface ResourceSuggestion {
+  name: string;
+  type: string;
+  whyUseful: string;
+  suggestedUse: string;
+}
+
+export interface ResourceHubData {
+  topic: string;
+  beginner: ResourceSuggestion;
+  intermediate: ResourceSuggestion;
+  advanced: ResourceSuggestion;
+  teachingTip: string;
+}
+
+export interface SavedResourceHub {
+  id: string;
+  topic: string;
+  data: ResourceHubData;
+  classCode: string;
+  createdAt: string;
+  status?: CurriculumStatus;
 }
 
 export interface ExamPaper {
@@ -296,4 +359,5 @@ export interface DashboardData {
   lastSyncedAt: string;
   assignments: Assignment[];
   assignmentSubmissions: AssignmentSubmission[];
+  studentPerformance?: StudentPerformance[];
 }

@@ -1,4 +1,4 @@
-import { AttendanceRecord, AttendanceSession, CaseStudy, Classroom, CurriculumItem, CurriculumStatus, CurriculumPlan, DashboardData, DBUser, ExamPaper, GeneratedLecture, LectureCompletion, LectureLanguagePreference, LectureNotes, LessonPlan, Quiz, Role, SharedContent, StudentLecturePreference, Submission, User, VideoLecture, Assignment, AssignmentSubmission } from './types';
+import { AttendanceRecord, AttendanceSession, CaseStudy, Classroom, CurriculumItem, CurriculumStatus, CurriculumPlan, DashboardData, DBUser, ExamPaper, GeneratedLecture, LectureCompletion, LectureLanguagePreference, LectureNotes, LessonPlan, Quiz, Role, SharedContent, StudentLecturePreference, Submission, User, VideoLecture, Assignment, AssignmentSubmission, StudentPerformance, AnimationScript, SavedResourceHub } from './types';
 import * as db from './db';
 
 const SIMULATED_DELAY = 300;
@@ -232,10 +232,6 @@ export const joinClass = async (userEmail: string, classCode: string): Promise<U
     return userForSession;
 };
 
-export const fetchDashboardData = async (user: User): Promise<DashboardData> => {
-    await delay(SIMULATED_DELAY);
-    return buildDashboardData(user);
-};
 
 export const joinClassParent = async (parentEmail: string, classCode: string, studentEmail: string): Promise<User> => {
     await delay(SIMULATED_DELAY);
@@ -301,9 +297,23 @@ export const deleteSharedContent = sharedContentService.delete;
 
 const lectureService = createCrudService<GeneratedLecture>(db.getGeneratedLectures, db.saveGeneratedLectures);
 export const addGeneratedLecture = lectureService.add;
+export const updateGeneratedLecture = lectureService.update;
 
 const caseStudyService = createCrudService<CaseStudy>(db.getGeneratedCaseStudies, db.saveGeneratedCaseStudies);
 export const addGeneratedCaseStudy = caseStudyService.add;
+export const updateGeneratedCaseStudy = caseStudyService.update;
+
+const animationService = createCrudService<AnimationScript>(db.getAnimationScripts, db.saveAnimationScripts);
+export const addAnimationScript = animationService.add;
+export const updateAnimationScript = animationService.update;
+export const deleteAnimationScript = animationService.delete;
+export const fetchAnimationScripts = async (classCode: string) => { await delay(100); return db.getAnimationScripts().filter(a => a.classCode === classCode); };
+
+const resourceHubService = createCrudService<SavedResourceHub>(db.getResourceHubs, db.saveResourceHubs);
+export const addResourceHub = resourceHubService.add;
+export const updateResourceHub = resourceHubService.update;
+export const deleteResourceHub = resourceHubService.delete;
+export const fetchResourceHubs = async (classCode: string) => { await delay(100); return db.getResourceHubs().filter(a => a.classCode === classCode); };
 
 export const addSubmission = async (submission: Omit<Submission, 'submittedAt'>): Promise<Submission> => {
     await delay(SIMULATED_DELAY);
@@ -718,6 +728,8 @@ export const setAssignmentStatus = (teacher: User, id: string, status: Curriculu
 export const setCurriculumPlanStatus = (teacher: User, id: string, status: CurriculumStatus) => setContentStatus(teacher, id, status, db.getCurriculumPlans, db.saveCurriculumPlans);
 export const setSharedContentStatus = (teacher: User, id: string, status: CurriculumStatus) => setContentStatus(teacher, id, status, db.getSharedContent, db.saveSharedContent);
 export const setCaseStudyStatus = (teacher: User, id: string, status: CurriculumStatus) => setContentStatus(teacher, id, status, db.getGeneratedCaseStudies, db.saveGeneratedCaseStudies);
+export const setAnimationScriptStatus = (teacher: User, id: string, status: CurriculumStatus) => setContentStatus(teacher, id, status, db.getAnimationScripts, db.saveAnimationScripts);
+export const setResourceHubStatus = (teacher: User, id: string, status: CurriculumStatus) => setContentStatus(teacher, id, status, db.getResourceHubs, db.saveResourceHubs);
 
 export const deleteGeneratedLecture = async (id: string): Promise<void> => {
     await delay(SIMULATED_DELAY);
@@ -729,4 +741,61 @@ export const deleteCaseStudy = async (id: string): Promise<void> => {
     await delay(SIMULATED_DELAY);
     const items = db.getGeneratedCaseStudies().filter(item => item.id !== id);
     db.saveGeneratedCaseStudies(items);
+};
+
+export const addStudentPerformance = async (performance: Omit<StudentPerformance, 'id' | 'timestamp'>): Promise<StudentPerformance> => {
+    await delay(SIMULATED_DELAY);
+    const performances = db.getStudentPerformance();
+    const newPerformance: StudentPerformance = {
+        ...performance,
+        id: crypto.randomUUID(),
+        timestamp: nowIso(),
+    };
+    db.saveStudentPerformance([...performances, newPerformance]);
+    return newPerformance;
+};
+
+
+export const getStudentPerformanceByEmail = async (email: string): Promise<StudentPerformance[]> => {
+    await delay(SIMULATED_DELAY);
+    return db.getStudentPerformance().filter(p => p.studentEmail === email);
+};
+
+export const fetchDashboardData = async (user: User): Promise<DashboardData & { studentPerformance: StudentPerformance[] }> => {
+    await delay(SIMULATED_DELAY);
+    const baseData = buildDashboardData(user);
+    const studentPerformance = await getStudentPerformanceByEmail(user.email);
+    return { ...baseData, studentPerformance };
+};
+
+// --- VIDYA AI METHODS ---
+
+export const processVidyaLecture = async (topic: string, sourceType: string, sourceUrl?: string, language: string = 'English') => {
+    const response = await fetch('/api/vidya/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, sourceType, sourceUrl, language })
+    });
+    if (!response.ok) throw new Error('Failed to process Vidya AI lecture');
+    return await response.json();
+};
+
+export const translateVidyaContent = async (text: string, targetLanguage: string) => {
+    const response = await fetch('/api/vidya/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, targetLanguage })
+    });
+    if (!response.ok) throw new Error('Failed to translate content');
+    return await response.json();
+};
+
+export const generateVidyaPPT = async (topic: string, language: string = 'English') => {
+    const response = await fetch('/api/vidya/generate-ppt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, language })
+    });
+    if (!response.ok) throw new Error('Failed to generate PPT');
+    return await response.json();
 };

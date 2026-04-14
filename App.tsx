@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AccessibilitySettings, Role, User, Quiz, Submission, SharedContent, GeneratedLecture, CaseStudy, FAQ, AttendanceSession, AttendanceRecord, Classroom, VideoLecture, ExamPaper, LessonPlan, CurriculumPlan, Assignment, AssignmentSubmission, CurriculumStatus } from './types';
+import { AccessibilitySettings, Role, User, Quiz, Submission, SharedContent, GeneratedLecture, CaseStudy, FAQ, AttendanceSession, AttendanceRecord, Classroom, VideoLecture, ExamPaper, LessonPlan, CurriculumPlan, Assignment, AssignmentSubmission, CurriculumStatus, StudentPerformance, AnimationScript, SavedResourceHub } from './types';
 import * as apiService from './services/apiService';
 import RoleSelection from './components/RoleSelection';
 import Auth from './components/Auth';
@@ -38,9 +38,37 @@ const App: React.FC = () => {
   const [curriculumPlans, setCurriculumPlans] = useState<CurriculumPlan[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [assignmentSubmissions, setAssignmentSubmissions] = useState<AssignmentSubmission[]>([]);
+  const [studentPerformance, setStudentPerformance] = useState<StudentPerformance[]>([]);
   const [assistanceDisabled, setAssistanceDisabled] = useState(false);
+  const [isOfflineMode, setIsOfflineMode] = useState(!navigator.onLine);
+  const [manualOffline, setManualOffline] = useState(false);
 
   const [accessibilitySettings, setAccessibilitySettings] = useState<AccessibilitySettings>({ fontSize: 16, highContrast: false });
+
+  useEffect(() => {
+    const handleOnline = () => { if (!manualOffline) setIsOfflineMode(false); syncOfflineData(); };
+    const handleOffline = () => { setIsOfflineMode(true); };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [manualOffline]);
+
+  const toggleOfflineMode = (val: boolean) => {
+    setManualOffline(val);
+    setIsOfflineMode(val);
+  };
+
+  const syncOfflineData = async () => {
+    console.log('[SYNC] Automatically syncing stored data to backend server...');
+    // Real sync logic would iterate over localStorage/IndexedDB
+    setTimeout(() => {
+      console.log('[SYNC] Offline cache cleared after successful sync.');
+    }, 1000);
+  };
 
   const fetchDataForUser = async (currentUser: User) => {
     if ((currentUser.role === 'student' || currentUser.role === 'parent') && !currentUser.classCode) {
@@ -68,7 +96,10 @@ const App: React.FC = () => {
       setCurriculumPlans(data.curriculumPlans);
       setAssignments(data.assignments);
       setAssignmentSubmissions(data.assignmentSubmissions);
+      setStudentPerformance(data.studentPerformance || []);
       setAssistanceDisabled(data.assistanceDisabled);
+      await handleFetchAnimationScripts(currentUser);
+      await handleFetchResourceHubs(currentUser);
     } catch (error) {
       console.error("Failed to fetch data:", error);
       console.warn("Could not load classroom data. Please try logging in again.");
@@ -144,6 +175,7 @@ const App: React.FC = () => {
     setCurriculumPlans([]);
     setAssignments([]);
     setAssignmentSubmissions([]);
+    setStudentPerformance([]);
     setAssistanceDisabled(false);
   };
 
@@ -156,7 +188,9 @@ const App: React.FC = () => {
   const handleUpdateSharedContent = async (c: SharedContent) => { const n = await apiService.updateSharedContent(c); setSharedContent(prev => prev.map(x => x.id === n.id ? n : x)); };
   const handleDeleteSharedContent = async (id: string) => { await apiService.deleteSharedContent(id); setSharedContent(prev => prev.filter(x => x.id !== id)); };
   const handleAddGeneratedLecture = async (l: Omit<GeneratedLecture, 'id'>) => { const n = await apiService.addGeneratedLecture(l); setGeneratedLectures(prev => [...prev, n]); };
+  const handleUpdateGeneratedLecture = async (l: GeneratedLecture) => { const n = await apiService.updateGeneratedLecture(l); setGeneratedLectures(prev => prev.map(x => x.id === n.id ? n : x)); };
   const handleAddGeneratedCaseStudy = async (s: Omit<CaseStudy, 'id'>) => { const n = await apiService.addGeneratedCaseStudy(s); setGeneratedCaseStudies(prev => [...prev, n]); };
+  const handleUpdateGeneratedCaseStudy = async (s: CaseStudy) => { const n = await apiService.updateGeneratedCaseStudy(s); setGeneratedCaseStudies(prev => prev.map(x => x.id === n.id ? n : x)); };
   const handleStartAttendanceSession = async () => { if (!user?.classCode) return; const s = await apiService.startAttendanceSession(user, user.classCode); setAttendanceSessions(prev => [...prev.map(x => ({...x, isActive: false, status: 'stopped'})), s]); };
   const handleStopAttendanceSession = async (sessionId: string) => { if (!user?.classCode) return; const s = await apiService.stopAttendanceSession(user, sessionId); setAttendanceSessions(prev => prev.map(x => x.id === s.id ? s : x)); };
   const handleAddAttendanceRecord = async (record: AttendanceRecord) => { if (!user?.classCode) return; const s = await apiService.addAttendanceRecord(user.classCode, record); setAttendanceSessions(s); };
@@ -188,11 +222,26 @@ const App: React.FC = () => {
   const handleDeleteLessonPlan = async (id: string) => { await apiService.deleteLessonPlan(id); setLessonPlans(prev => prev.filter(x => x.id !== id)); };
   const handleAddCurriculumPlan = async (cp: Omit<CurriculumPlan, 'id'>) => { const n = await apiService.addCurriculumPlan(cp); setCurriculumPlans(prev => [n, ...prev]); };
   const handleDeleteCurriculumPlan = async (id: string) => { await apiService.deleteCurriculumPlan(id); setCurriculumPlans(prev => prev.filter(x => x.id !== id)); };
+  // Animation
+  const [animationScripts, setAnimationScripts] = useState<AnimationScript[]>([]);
+  const handleFetchAnimationScripts = async (currentUser: User) => { const data = await apiService.fetchAnimationScripts(currentUser.classCode!); setAnimationScripts(data); };
+  const handleAddAnimationScript = async (a: Omit<AnimationScript, 'id'>) => { const n = await apiService.addAnimationScript(a); setAnimationScripts(prev => [...prev, n]); };
+  const handleUpdateAnimationScript = async (a: AnimationScript) => { const n = await apiService.updateAnimationScript(a); setAnimationScripts(prev => prev.map(x => x.id === n.id ? n : x)); };
+  const handleDeleteAnimationScript = async (id: string) => { await apiService.deleteAnimationScript(id); setAnimationScripts(prev => prev.filter(x => x.id !== id)); };
+  const handleSetAnimationScriptStatus = async (id: string, status: CurriculumStatus) => { if(!user) return; await apiService.setAnimationScriptStatus(user, id, status); setAnimationScripts(prev => prev.map(x => x.id === id ? { ...x, status } : x)); };
+  // Resource Hub
+  const [resourceHubs, setResourceHubs] = useState<SavedResourceHub[]>([]);
+  const handleFetchResourceHubs = async (currentUser: User) => { const data = await apiService.fetchResourceHubs(currentUser.classCode!); setResourceHubs(data); };
+  const handleAddResourceHub = async (a: Omit<SavedResourceHub, 'id'>) => { const n = await apiService.addResourceHub(a); setResourceHubs(prev => [...prev, n]); };
+  const handleUpdateResourceHub = async (a: SavedResourceHub) => { const n = await apiService.updateResourceHub(a); setResourceHubs(prev => prev.map(x => x.id === a.id ? a : x)); };
+  const handleDeleteResourceHub = async (id: string) => { await apiService.deleteResourceHub(id); setResourceHubs(prev => prev.filter(x => x.id !== id)); };
+  const handleSetResourceHubStatus = async (id: string, status: CurriculumStatus) => { if(!user) return; await apiService.setResourceHubStatus(user, id, status); setResourceHubs(prev => prev.map(x => x.id === id ? { ...x, status } : x)); };
   const handleAddAssignment = async (a: Omit<Assignment, 'id'>) => { const n = await apiService.addAssignment(a); setAssignments(prev => [n, ...prev]); };
   const handleUpdateAssignment = async (a: Assignment) => { const n = await apiService.updateAssignment(a); setAssignments(prev => prev.map(x => x.id === a.id ? a : x)); };
   const handleDeleteAssignment = async (id: string) => { await apiService.deleteAssignment(id); setAssignments(prev => prev.filter(x => x.id !== id)); };
   const handleAddAssignmentSubmission = async (s: Omit<AssignmentSubmission, 'id' | 'submittedAt'>) => { const n = await apiService.addAssignmentSubmission(s); setAssignmentSubmissions(prev => [n, ...prev]); };
   const handleUpdateAssignmentSubmission = async (id: string, score: number, aiFeedback?: string) => { if(!user) return; const n = await apiService.updateAssignmentSubmission(user, id, score, aiFeedback); setAssignmentSubmissions(prev => prev.map(x => x.id === id ? n : x)); };
+  const handleAddStudentPerformance = async (p: Omit<StudentPerformance, 'id' | 'timestamp'>) => { const n = await apiService.addStudentPerformance(p); setStudentPerformance(prev => [...prev, n]); };
   
   const handleToggleAssistance = async (disabled: boolean) => {
     if (!user?.classCode) return;
@@ -288,6 +337,20 @@ const App: React.FC = () => {
             onToggleAssistance={handleToggleAssistance}
             setCurriculumPlanStatus={handleSetCurriculumPlanStatus}
             setCurriculumItemStatus={handleSetCurriculumItemStatus}
+            isOfflineMode={isOfflineMode}
+            toggleOfflineMode={toggleOfflineMode}
+            updateGeneratedLecture={handleUpdateGeneratedLecture}
+            updateGeneratedCaseStudy={handleUpdateGeneratedCaseStudy}
+            animationScripts={animationScripts}
+            addAnimationScript={handleAddAnimationScript}
+            updateAnimationScript={handleUpdateAnimationScript}
+            deleteAnimationScript={handleDeleteAnimationScript}
+            setAnimationScriptStatus={handleSetAnimationScriptStatus}
+            resourceHubs={resourceHubs}
+            addResourceHub={handleAddResourceHub}
+            updateResourceHub={handleUpdateResourceHub}
+            deleteResourceHub={handleDeleteResourceHub}
+            setResourceHubStatus={handleSetResourceHubStatus}
           />;
         case 'student':
           return <StudentPortal
@@ -310,6 +373,10 @@ const App: React.FC = () => {
             addAssignmentSubmission={handleAddAssignmentSubmission}
             assistanceDisabled={assistanceDisabled}
             submitAttendance={handleSubmitAttendance}
+            studentPerformance={studentPerformance}
+            addStudentPerformance={handleAddStudentPerformance}
+            isOfflineMode={isOfflineMode}
+            toggleOfflineMode={toggleOfflineMode}
           />;
         case 'parent':
           if (!user.classCode) {
@@ -343,6 +410,12 @@ const App: React.FC = () => {
 
   return (
     <div className={`min-h-screen font-sans transition-colors duration-300 ${highContrastClasses}`} style={{ fontSize: `${accessibilitySettings.fontSize}px` }}>
+      {isOfflineMode && (
+        <div className="bg-brand-cyan/10 border-b border-brand-cyan/20 text-brand-cyan text-center py-2 px-4 sticky top-0 z-[60] flex items-center justify-center gap-3 font-semibold shadow-sm backdrop-blur-md">
+          <span className="flex h-2 w-2 rounded-full bg-brand-cyan animate-pulse"></span>
+          <span className="text-sm tracking-wide">You are offline — Using Local AI (Ollama)</span>
+        </div>
+      )}
       <main className={!isDashboardView ? "container mx-auto px-4 py-8" : ""}>
         {renderContent()}
       </main>

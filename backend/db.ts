@@ -1,4 +1,4 @@
-import { AttendanceSession, CaseStudy, Classroom, CurriculumItem, CurriculumPlan, DBUser, ExamPaper, GeneratedLecture, LessonPlan, Quiz, SharedContent, StudentLecturePreference, Submission, VideoLecture, Assignment, AssignmentSubmission } from './types';
+import { AttendanceSession, CaseStudy, Classroom, CurriculumItem, CurriculumPlan, DBUser, ExamPaper, GeneratedLecture, LessonPlan, Quiz, SharedContent, StudentLecturePreference, Submission, VideoLecture, Assignment, AssignmentSubmission, StudentPerformance } from './types';
 
 const DB_KEYS = {
     users: 'allUsers',
@@ -17,6 +17,9 @@ const DB_KEYS = {
     studentLecturePreferences: 'studentLecturePreferences',
     assignments: 'assignments',
     assignmentSubmissions: 'assignmentSubmissions',
+    studentPerformance: 'studentPerformance',
+    animationScripts: 'animationScripts',
+    resourceHubs: 'resourceHubs',
     syncVersion: 'mockRealtimeSyncVersion',
     lastSyncedAt: 'mockRealtimeLastSyncedAt',
 } as const;
@@ -106,3 +109,11 @@ export const saveAssignments = (assignments: Assignment[]) => saveToDB(DB_KEYS.a
 
 export const getAssignmentSubmissions = () => getFromDB<AssignmentSubmission[]>(DB_KEYS.assignmentSubmissions, []);
 export const saveAssignmentSubmissions = (submissions: AssignmentSubmission[]) => saveToDB(DB_KEYS.assignmentSubmissions, submissions);
+
+export const getStudentPerformance = () => getFromDB<StudentPerformance[]>(DB_KEYS.studentPerformance, []);
+export const saveStudentPerformance = (performance: StudentPerformance[]) => saveToDB(DB_KEYS.studentPerformance, performance);
+export const getAnimationScripts = () => getFromDB<any[]>(DB_KEYS.animationScripts, []);
+export const saveAnimationScripts = (scripts: any[]) => saveToDB(DB_KEYS.animationScripts, scripts);
+
+export const getResourceHubs = () => getFromDB<any[]>(DB_KEYS.resourceHubs, []);
+export const saveResourceHubs = (hubs: any[]) => saveToDB(DB_KEYS.resourceHubs, hubs);

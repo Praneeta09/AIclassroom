@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { Quiz, User, Submission, SharedContent, SharedContentType, LectureSlide, CaseStudy, GeneratedLecture, FAQ, AttendanceSession, VideoLecture, ExamPaper, LessonPlan, CurriculumPlan, CurriculumTopic, CurriculumStatus, Assignment, AssignmentSubmission } from '../types';
-import { generateQuiz, generateLectureSlides, generateCaseStudy, generateQuizFromContent, generateNotesFromTranscript, generateExamPaperAI, generateHybridLessonPlanAI, generateCurriculumIntelligenceAI } from '../services/aiService';
-import { SparklesIcon, LogoutIcon, BookOpenIcon, HomeIcon, QuizIcon, VisualizationIcon, EditIcon, TrashIcon, ShareIcon, UploadIcon, FileTextIcon, ImageIcon, AIGeneratorIcon, UserCheckIcon, UsersIcon } from './Icons';
+import { Quiz, User, Submission, SharedContent, SharedContentType, LectureSlide, CaseStudy, GeneratedLecture, FAQ, AttendanceSession, VideoLecture, ExamPaper, CurriculumPlan, CurriculumTopic, CurriculumStatus, Assignment, AssignmentSubmission, AnimationScript, EklavyaAnalysis, SavedResourceHub, ResourceHubData } from '../types';
+import { generateQuiz, generateLectureSlides, generateCaseStudy, generateQuizFromContent, generateNotesFromTranscript, generateExamPaperAI, generateResources, generateCurriculumIntelligenceAI, generateAnimationScript, generateEklavyaAnalysis } from '../services/aiService';
+import { SparklesIcon, LogoutIcon, BookOpenIcon, HomeIcon, QuizIcon, VisualizationIcon, EditIcon, TrashIcon, ShareIcon, UploadIcon, FileTextIcon, ImageIcon, AIGeneratorIcon, UserCheckIcon, UsersIcon, PlayIcon } from './Icons';
 import Sidebar from './Sidebar';
 import SmartSearch from './SmartSearch';
 import TTSPlayer from './TTSPlayer';
@@ -34,9 +34,6 @@ interface TeacherPortalProps {
   addExamPaper: (ep: Omit<ExamPaper, 'id'>) => Promise<void>;
   updateExamPaper: (ep: ExamPaper) => Promise<void>;
   deleteExamPaper: (id: string) => Promise<void>;
-  lessonPlans: LessonPlan[];
-  addLessonPlan: (lp: Omit<LessonPlan, 'id'>) => Promise<void>;
-  deleteLessonPlan: (id: string) => Promise<void>;
   curriculumPlans: CurriculumPlan[];
   addCurriculumPlan: (cp: Omit<CurriculumPlan, 'id'>) => Promise<void>;
   deleteCurriculumPlan: (id: string) => Promise<void>;
@@ -52,7 +49,6 @@ interface TeacherPortalProps {
   setGeneratedLectureStatus: (id: string, status: CurriculumStatus) => Promise<void>;
   setVideoLectureStatus: (id: string, status: CurriculumStatus) => Promise<void>;
   setExamPaperStatus: (id: string, status: CurriculumStatus) => Promise<void>;
-  setLessonPlanStatus: (id: string, status: CurriculumStatus) => Promise<void>;
   setAssignmentStatus: (id: string, status: CurriculumStatus) => Promise<void>;
   setCurriculumPlanStatus: (id: string, status: CurriculumStatus) => Promise<void>;
   setCurriculumItemStatus: (id: string, status: CurriculumStatus) => Promise<void>;
@@ -60,6 +56,20 @@ interface TeacherPortalProps {
   setSharedContentStatus: (id: string, status: CurriculumStatus) => Promise<void>;
   deleteGeneratedLecture: (id: string) => Promise<void>;
   deleteCaseStudy: (id: string) => Promise<void>;
+  updateGeneratedLecture: (l: GeneratedLecture) => Promise<void>;
+  updateGeneratedCaseStudy: (s: CaseStudy) => Promise<void>;
+  isOfflineMode: boolean;
+  toggleOfflineMode: (val: boolean) => void;
+  animationScripts: AnimationScript[];
+  addAnimationScript: (a: Omit<AnimationScript, 'id'>) => Promise<void>;
+  updateAnimationScript: (a: AnimationScript) => Promise<void>;
+  deleteAnimationScript: (id: string) => Promise<void>;
+  setAnimationScriptStatus: (id: string, status: CurriculumStatus) => Promise<void>;
+  resourceHubs: SavedResourceHub[];
+  addResourceHub: (a: Omit<SavedResourceHub, 'id'>) => Promise<void>;
+  updateResourceHub: (a: SavedResourceHub) => Promise<void>;
+  deleteResourceHub: (id: string) => Promise<void>;
+  setResourceHubStatus: (id: string, status: CurriculumStatus) => Promise<void>;
 }
 
 type AttendancePageSession = AttendanceSession & {
@@ -111,19 +121,23 @@ type VideoLectureFormPayload = Omit<VideoLecture, 'id' | 'uploadedAt' | 'complet
 
 const TeacherPortal: React.FC<TeacherPortalProps> = (props) => {
   const [activePage, setActivePage] = useState('home');
-  const { onLogout, user, quizzes, studentSubmissions, sharedContent, generatedLectures, generatedCaseStudies, faqs, attendanceSessions } = props;
+  const [editingLecture, setEditingLecture] = useState<GeneratedLecture | null>(null);
+  const [editingAnimation, setEditingAnimation] = useState<AnimationScript | null>(null);
+  const { onLogout, user, quizzes, studentSubmissions, sharedContent, generatedLectures, generatedCaseStudies, attendanceSessions, isOfflineMode, toggleOfflineMode, curriculumPlans, assignments, setQuizStatus, deleteGeneratedLecture, setGeneratedLectureStatus, examPapers, setExamPaperStatus, deleteExamPaper, resourceHubs, addResourceHub, deleteResourceHub, setResourceHubStatus, animationScripts, setAnimationScriptStatus, deleteAnimationScript, students, faqs } = props;
 
   const navItems = [
     { id: 'home', label: 'Home', icon: <HomeIcon /> },
     { id: 'shared-content', label: 'Shared Content', icon: <ShareIcon /> },
     { id: 'content-generator', label: 'AI Content Generator', icon: <AIGeneratorIcon /> },
-    { id: 'video-lectures', label: 'Video Lectures', icon: <FileTextIcon /> },
+    { id: 'video-lectures', label: 'Academic Notes', icon: <FileTextIcon /> },
     { id: 'quiz-generation', label: 'Quiz Generation', icon: <QuizIcon /> },
     { id: 'question-paper', label: 'Question Paper', icon: <BookOpenIcon /> },
-    { id: 'hybrid-classroom', label: 'Hybrid Classroom', icon: <UsersIcon /> },
+    { id: 'resource-hub', label: 'Smart Resource Hub', icon: <SparklesIcon /> },
     { id: 'curriculum', label: 'Curriculum Intel', icon: <SparklesIcon /> },
     { id: 'assignments', label: 'Assignments', icon: <FileTextIcon /> },
     { id: 'attendance', label: 'Attendance', icon: <UserCheckIcon /> },
+    { id: 'animation-generator', label: 'Animation Generator', icon: <PlayIcon /> },
+    { id: 'eklavya', label: 'EKLAVYA (AI Analytics)', icon: <VisualizationIcon /> },
     { id: 'students', label: 'Students', icon: <UsersIcon /> },
     { id: 'visualization', label: 'Visualization', icon: <VisualizationIcon /> },
   ];
@@ -134,7 +148,7 @@ const TeacherPortal: React.FC<TeacherPortalProps> = (props) => {
 
   return (
     <div className="flex">
-      <Sidebar activePage={activePage} onNavigate={setActivePage} title={<>Teacher<br />Dashboard</>} navItems={navItems} />
+      <Sidebar activePage={activePage} onNavigate={setActivePage} title={<>Teacher<br />Dashboard</>} navItems={navItems} isOfflineMode={props.isOfflineMode} toggleOfflineMode={props.toggleOfflineMode} />
       <div className="flex-1 ml-64">
         <div className="p-8 max-w-7xl mx-auto">
           <header className="flex justify-between items-center mb-8 gap-8">
@@ -165,13 +179,16 @@ const TeacherPortal: React.FC<TeacherPortalProps> = (props) => {
                   setCaseStudyStatus={props.setCaseStudyStatus}
                   deleteGeneratedLecture={props.deleteGeneratedLecture}
                   deleteCaseStudy={props.deleteCaseStudy}
+                  isOfflineMode={isOfflineMode}
                 />}
-                {activePage === 'video-lectures' && <VideoLecturesPage user={user} videoLectures={props.videoLectures} addVideoLecture={props.addVideoLecture} deleteVideoLecture={props.deleteVideoLecture} generatedLectures={props.generatedLectures} addGeneratedLecture={props.addGeneratedLecture} addQuiz={props.addQuiz} setVideoLectureStatus={props.setVideoLectureStatus} />}
+                {activePage === 'video-lectures' && <VideoLecturesPage user={user} videoLectures={props.videoLectures} addVideoLecture={props.addVideoLecture} deleteVideoLecture={props.deleteVideoLecture} generatedLectures={props.generatedLectures} addGeneratedLecture={props.addGeneratedLecture} addQuiz={props.addQuiz} setVideoLectureStatus={props.setVideoLectureStatus} isOfflineMode={isOfflineMode} />}
                 {activePage === 'quiz-generation' && <QuizGenerationPage user={user} quizzes={props.quizzes} addQuiz={props.addQuiz} updateQuiz={props.updateQuiz} deleteQuiz={props.deleteQuiz} generatedLectures={props.generatedLectures} setQuizStatus={props.setQuizStatus} />}
                 {activePage === 'question-paper' && <QuestionPaperPage user={user} examPapers={props.examPapers} addExamPaper={props.addExamPaper} updateExamPaper={props.updateExamPaper} deleteExamPaper={props.deleteExamPaper} setExamPaperStatus={props.setExamPaperStatus} />}
-                {activePage === 'hybrid-classroom' && <HybridClassroomPage user={user} lessonPlans={props.lessonPlans} addLessonPlan={props.addLessonPlan} deleteLessonPlan={props.deleteLessonPlan} setLessonPlanStatus={props.setLessonPlanStatus} />}
+                {activePage === 'resource-hub' && <SmartResourceHubPage user={user} resourceHubs={props.resourceHubs} addResourceHub={props.addResourceHub} updateResourceHub={props.updateResourceHub} deleteResourceHub={props.deleteResourceHub} setResourceHubStatus={props.setResourceHubStatus} />}
                 {activePage === 'curriculum' && <CurriculumPage user={user} curriculumPlans={props.curriculumPlans} addCurriculumPlan={props.addCurriculumPlan} deleteCurriculumPlan={props.deleteCurriculumPlan} setCurriculumPlanStatus={props.setCurriculumPlanStatus} />}
                 {activePage === 'assignments' && <AssignmentsPage assignments={props.assignments} addAssignment={props.addAssignment} updateAssignment={props.updateAssignment} deleteAssignment={props.deleteAssignment} assignmentSubmissions={props.assignmentSubmissions} updateAssignmentSubmission={props.updateAssignmentSubmission} user={props.user} setAssignmentStatus={props.setAssignmentStatus} />}
+                {activePage === 'animation-generator' && <AnimationGeneratorPage user={user} animationScripts={props.animationScripts} addAnimationScript={props.addAnimationScript} updateAnimationScript={props.updateAnimationScript} deleteAnimationScript={props.deleteAnimationScript} setAnimationScriptStatus={props.setAnimationScriptStatus} isOfflineMode={isOfflineMode} />}
+                {activePage === 'eklavya' && <EklavyaPage user={user} submissions={props.studentSubmissions} students={props.allUsers} isOfflineMode={isOfflineMode} />}
                 {activePage === 'visualization' && <VisualizationPage quizzes={props.quizzes} submissions={props.studentSubmissions} />}
                 {activePage === 'attendance' && <AttendancePage activeSession={activeSession} sessions={attendanceSessions as AttendancePageSession[]} onStart={() => Object(props.startAttendance)()} onStop={() => activeSession && props.stopAttendance(activeSession.id)} assistanceDisabled={props.assistanceDisabled} onToggleAssistance={props.onToggleAssistance} />}
                 {activePage === 'students' && <StudentsPage allUsers={props.allUsers} user={user} />}
@@ -539,17 +556,21 @@ const ContentGeneratorPage: React.FC<{
   user: User; 
   addGeneratedLecture: (l: Omit<GeneratedLecture, 'id'>) => Promise<void>; 
   addGeneratedCaseStudy: (s: Omit<CaseStudy, 'id'>) => Promise<void>; 
+  updateGeneratedLecture: (l: GeneratedLecture) => Promise<void>;
+  updateGeneratedCaseStudy: (s: CaseStudy) => Promise<void>;
   generatedLectures: GeneratedLecture[];
   generatedCaseStudies: CaseStudy[];
   setGeneratedLectureStatus: (id: string, status: CurriculumStatus) => Promise<void>;
   setCaseStudyStatus: (id: string, status: CurriculumStatus) => Promise<void>;
   deleteGeneratedLecture: (id: string) => Promise<void>;
   deleteCaseStudy: (id: string) => Promise<void>;
-}> = ({ user, addGeneratedLecture, addGeneratedCaseStudy, generatedLectures, generatedCaseStudies, setGeneratedLectureStatus, setCaseStudyStatus, deleteGeneratedLecture, deleteCaseStudy }) => {
+  isOfflineMode: boolean;
+}> = ({ user, addGeneratedLecture, addGeneratedCaseStudy, updateGeneratedLecture, updateGeneratedCaseStudy, generatedLectures, generatedCaseStudies, setGeneratedLectureStatus, setCaseStudyStatus, deleteGeneratedLecture, deleteCaseStudy, isOfflineMode }) => {
   const [outline, setOutline] = useState('');
   const [contentType, setContentType] = useState<'slides' | 'case-study'>('slides');
   const [selectedLanguage, setSelectedLanguage] = useState('English');
   const [generatedContent, setGeneratedContent] = useState<({ slides: LectureSlide[] } | Omit<CaseStudy, 'id'>) | null>(null);
+  const [editingItem, setEditingItem] = useState<GeneratedLecture | CaseStudy | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -558,7 +579,7 @@ const ContentGeneratorPage: React.FC<{
     e.preventDefault();
     if (!outline.trim()) { setError('Please provide a topic outline.'); return; }
     if (!user.classCode) { setError('Cannot generate content without a class.'); return; }
-    setIsLoading(true); setError(null); setGeneratedContent(null); setSuccessMessage(null);
+    setIsLoading(true); setError(null); setGeneratedContent(null); setSuccessMessage(null); setEditingItem(null);
     try {
       if (contentType === 'slides') {
         const content = await generateLectureSlides(outline, selectedLanguage);
@@ -574,6 +595,37 @@ const ContentGeneratorPage: React.FC<{
       }
     } catch (err: any) { setError(err.message || 'An unknown error occurred.'); }
     finally { setIsLoading(false); }
+  };
+
+  const handleUpdateSlide = (slideIndex: number, field: keyof LectureSlide, value: any) => {
+    if (!editingItem || !('slides' in editingItem)) return;
+    const nextItem = { ...editingItem } as GeneratedLecture;
+    const nextSlides = [...nextItem.slides];
+    nextSlides[slideIndex] = { ...nextSlides[slideIndex], [field]: value };
+    nextItem.slides = nextSlides;
+    setEditingItem(nextItem);
+  };
+
+  const handleAddSlide = () => {
+    if (!editingItem || !('slides' in editingItem)) return;
+    const nextItem = { ...editingItem } as GeneratedLecture;
+    nextItem.slides = [...nextItem.slides, { title: 'New Slide', points: ['- Add your content here'] }];
+    setEditingItem(nextItem);
+  };
+
+  const handleSaveUpdate = async () => {
+    if (!editingItem) return;
+    try {
+      if ('slides' in editingItem) {
+        await updateGeneratedLecture(editingItem as GeneratedLecture);
+      } else {
+        await updateGeneratedCaseStudy(editingItem as CaseStudy);
+      }
+      setSuccessMessage('Content updated successfully!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   return (
@@ -605,12 +657,79 @@ const ContentGeneratorPage: React.FC<{
           </form>
         </div>
         <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
-          <h2 className="text-2xl font-bold mb-6">Generated Content Preview</h2>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold">{editingItem ? 'Edit Content' : 'Generated Content Preview'}</h2>
+            {editingItem && (
+               <div className="flex gap-2">
+                 <button onClick={() => setEditingItem(null)} className="text-xs bg-brand-dark border border-brand-border px-3 py-1 rounded hover:bg-brand-border transition-colors">Cancel</button>
+                 <button onClick={handleSaveUpdate} className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 transition-colors font-bold">Save Changes</button>
+               </div>
+            )}
+          </div>
           <div className="max-h-[70vh] overflow-y-auto pr-4">
-            {!generatedContent && !isLoading && <div className="flex items-center justify-center h-full text-center text-gray-500"><p>Generated content will appear here.</p></div>}
-            {isLoading && <div className="flex items-center justify-center h-full text-center text-gray-400"><p>AI is thinking...</p></div>}
-            {generatedContent && 'slides' in generatedContent && (<div className="space-y-6">{generatedContent.slides.map((slide, index) => (<div key={index} className="bg-brand-dark p-4 rounded-lg border border-brand-border relative group"><h3 className="text-xl font-bold text-brand-cyan mb-2">Slide {index + 1}: {slide.title}</h3><ul className="list-disc list-inside space-y-1 text-gray-300 pl-2 mb-4">{slide.points.map((point, pIndex) => (<li key={pIndex}>{point}</li>))}</ul><div className="pt-2 border-t border-brand-border"><TTSPlayer text={`${slide.title}. ${slide.points.join('. ')}`} /></div></div>))}</div>)}
-            {generatedContent && 'introduction' in generatedContent && (<div className="space-y-4 text-gray-300 prose prose-invert max-w-none relative group"><h3 className="text-2xl font-bold text-brand-cyan">{(generatedContent as any).title}</h3><div className="pt-2 mb-4"><TTSPlayer text={`Case study: ${(generatedContent as any).title}. Introduction: ${(generatedContent as any).introduction}. Problem: ${(generatedContent as any).problem}. Solution: ${(generatedContent as any).solution}.`} /></div><h4>Introduction</h4><p>{(generatedContent as any).introduction}</p><h4>Problem</h4><p>{(generatedContent as any).problem}</p><h4>Solution</h4><p>{(generatedContent as any).solution}</p><h4>Conclusion</h4><p>{(generatedContent as any).conclusion}</p></div>)}
+            {!generatedContent && !editingItem && !isLoading && <div className="flex items-center justify-center h-full text-center text-gray-500"><p>Generated content will appear here.</p></div>}
+            {isLoading && <div className="flex items-center justify-center h-full text-center text-gray-400"><p>{isOfflineMode ? 'Processing locally...' : 'AI is thinking...'}</p></div>}
+            
+            {editingItem && 'slides' in editingItem && (
+               <div className="space-y-6">
+                 {editingItem.slides.map((slide, sIdx) => (
+                    <div key={sIdx} className="bg-brand-dark p-6 rounded-lg border border-brand-border relative group shadow-xl">
+                      <div className="space-y-4">
+                        <input 
+                          type="text" 
+                          value={slide.title} 
+                          onChange={(e) => handleUpdateSlide(sIdx, 'title', e.target.value)}
+                          className="w-full bg-brand-dark-blue border border-brand-border rounded p-2 text-xl font-bold text-brand-cyan focus:border-brand-cyan"
+                        />
+                        <textarea 
+                          value={slide.points.join('\n')} 
+                          onChange={(e) => handleUpdateSlide(sIdx, 'points', e.target.value.split('\n'))}
+                          className="w-full bg-brand-dark-blue border border-brand-border rounded p-2 text-gray-200 text-sm focus:border-brand-cyan"
+                          rows={5}
+                        />
+                        <input 
+                          type="text" 
+                          value={slide.visual || ''} 
+                          onChange={(e) => handleUpdateSlide(sIdx, 'visual', e.target.value)}
+                          placeholder="Visual description..."
+                          className="w-full bg-brand-dark-blue border border-brand-border rounded p-2 text-gray-400 text-xs italic"
+                        />
+                      </div>
+                    </div>
+                 ))}
+                 <button onClick={handleAddSlide} className="w-full py-4 border-2 border-dashed border-brand-border rounded-xl text-gray-500 hover:border-brand-cyan hover:text-brand-cyan transition-all flex items-center justify-center gap-2 font-bold">+ Add Teacher Slide</button>
+               </div>
+            )}
+
+            {!editingItem && generatedContent && 'slides' in generatedContent && (
+              <div className="space-y-6">
+                {(generatedContent as any).slides.map((slide: any, index: number) => (
+                  <div key={index} className="bg-brand-dark p-6 rounded-lg border border-brand-border relative group shadow-xl hover:border-brand-cyan transition-all">
+                    <div className="flex justify-between items-start mb-4">
+                      <h3 className="text-2xl font-bold text-brand-cyan">Slide {index + 1}: {slide.title}</h3>
+                      {slide.visualSuggestion && <span className="text-[10px] bg-brand-cyan/20 text-brand-cyan px-2 py-1 rounded-md font-bold uppercase tracking-widest">Visual: {slide.visualSuggestion}</span>}
+                    </div>
+                    <ul className="list-disc list-inside space-y-3 text-gray-200 pl-2 mb-6 text-lg">
+                      {slide.points.map((point: string, pIndex: number) => (
+                        <li key={pIndex}>{point}</li>
+                      ))}
+                    </ul>
+                    {slide.visual && (
+                      <div className="bg-brand-dark-blue/50 p-4 rounded-xl border border-brand-cyan/30 mb-4 bg-gradient-to-br from-brand-cyan/10 to-transparent">
+                        <p className="text-xs text-brand-cyan font-black flex items-center gap-2 uppercase tracking-tighter mb-2">
+                          <ImageIcon /> Modern Visual Illustration Keyword
+                        </p>
+                        <p className="text-lg font-bold text-white italic">"{slide.visual}"</p>
+                      </div>
+                    )}
+                    <div className="pt-2 border-t border-brand-border/50">
+                      <TTSPlayer text={`${slide.title}. ${slide.points.join('. ')}`} language={selectedLanguage as any} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {generatedContent && 'introduction' in generatedContent && (<div className="space-y-4 text-gray-300 prose prose-invert max-w-none relative group"><h3 className="text-2xl font-bold text-brand-cyan">{(generatedContent as any).title}</h3><div className="pt-2 mb-4"><TTSPlayer text={`Case study: ${(generatedContent as any).title}. Introduction: ${(generatedContent as any).introduction}. Problem: ${(generatedContent as any).problem}. Solution: ${(generatedContent as any).solution}.`} language={selectedLanguage as any} /></div><h4>Introduction</h4><p>{(generatedContent as any).introduction}</p><h4>Problem</h4><p>{(generatedContent as any).problem}</p><h4>Solution</h4><p>{(generatedContent as any).solution}</p><h4>Conclusion</h4><p>{(generatedContent as any).conclusion}</p></div>)}
           </div>
         </div>
       </div>
@@ -631,6 +750,7 @@ const ContentGeneratorPage: React.FC<{
                     <p className="text-xs text-gray-400">{l.slides.length} slides</p>
                   </div>
                   <div className="flex items-center gap-3">
+                    <button onClick={() => setEditingItem(l)} className="text-xs font-bold px-3 py-1.5 rounded-lg border border-brand-cyan text-brand-cyan hover:bg-brand-cyan/20">View / Edit</button>
                     <button onClick={() => setGeneratedLectureStatus(l.id, l.status === 'published' ? 'draft' : 'published')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${l.status === 'published' ? 'border-yellow-700 text-yellow-400 hover:bg-yellow-900/20' : 'border-green-700 text-green-400 hover:bg-green-900/20'}`}>{l.status === 'published' ? 'Unpublish' : 'Publish'}</button>
                     <button onClick={() => deleteGeneratedLecture(l.id)} className="text-red-500 hover:text-red-400 p-1"><TrashIcon /></button>
                   </div>
@@ -651,6 +771,7 @@ const ContentGeneratorPage: React.FC<{
                     <p className="text-xs text-gray-400">Case Study Format</p>
                   </div>
                   <div className="flex items-center gap-3">
+                    <button onClick={() => setEditingItem(cs)} className="text-xs font-bold px-3 py-1.5 rounded-lg border border-brand-cyan text-brand-cyan hover:bg-brand-cyan/20">View / Edit</button>
                     <button onClick={() => setCaseStudyStatus(cs.id, cs.status === 'published' ? 'draft' : 'published')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${cs.status === 'published' ? 'border-yellow-700 text-yellow-400 hover:bg-yellow-900/20' : 'border-green-700 text-green-400 hover:bg-green-900/20'}`}>{cs.status === 'published' ? 'Unpublish' : 'Publish'}</button>
                     <button onClick={() => deleteCaseStudy(cs.id)} className="text-red-500 hover:text-red-400 p-1"><TrashIcon /></button>
                   </div>
@@ -664,7 +785,7 @@ const ContentGeneratorPage: React.FC<{
   );
 };
 
-const VideoLecturesPage: React.FC<{ user: User; videoLectures: VideoLecture[]; addVideoLecture: (vl: VideoLectureFormPayload) => Promise<VideoLecture | null>; deleteVideoLecture: (id: string) => Promise<void>; generatedLectures: GeneratedLecture[]; addGeneratedLecture: (l: GeneratedLectureFormPayload) => Promise<void>; addQuiz: (quiz: Omit<Quiz, 'id'>) => Promise<void>; setVideoLectureStatus: (id: string, status: CurriculumStatus) => Promise<void>; }> = ({ user, videoLectures, addVideoLecture, deleteVideoLecture, addGeneratedLecture, addQuiz, setVideoLectureStatus }) => {
+const VideoLecturesPage: React.FC<{ user: User; videoLectures: VideoLecture[]; addVideoLecture: (vl: VideoLectureFormPayload) => Promise<VideoLecture | null>; deleteVideoLecture: (id: string) => Promise<void>; generatedLectures: GeneratedLecture[]; addGeneratedLecture: (l: GeneratedLectureFormPayload) => Promise<void>; addQuiz: (quiz: Omit<Quiz, 'id'>) => Promise<void>; setVideoLectureStatus: (id: string, status: CurriculumStatus) => Promise<void>; isOfflineMode: boolean; }> = ({ user, videoLectures, addVideoLecture, deleteVideoLecture, addGeneratedLecture, addQuiz, setVideoLectureStatus, isOfflineMode }) => {
   const [lectureMode, setLectureMode] = useState<LectureSourceType>('transcript');
   const [topic, setTopic] = useState('');
   const [transcript, setTranscript] = useState('');
@@ -721,8 +842,8 @@ const VideoLecturesPage: React.FC<{ user: User; videoLectures: VideoLecture[]; a
       setFeedback({ type: 'error', message: 'Please provide a YouTube link.' });
       return;
     }
-    if (lectureMode === 'video' && !fileData) {
-      setFeedback({ type: 'error', message: 'Please upload a lecture file.' });
+    if (isOfflineMode && lectureMode === 'youtube') {
+      setFeedback({ type: 'error', message: 'This feature (YouTube) requires internet connection. Please use Transcript mode for offline AI.' });
       return;
     }
 
@@ -900,8 +1021,8 @@ const VideoLecturesPage: React.FC<{ user: User; videoLectures: VideoLecture[]; a
         </div>
 
         <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
-          <h2 className="text-2xl font-bold mb-6">Past Lectures ({sortedLectures.length})</h2>
-          {sortedLectures.length === 0 ? <p className="text-gray-500">No video lectures uploaded yet.</p> : (
+          <h2 className="text-2xl font-bold mb-6">Past Academic Notes ({sortedLectures.length})</h2>
+          {sortedLectures.length === 0 ? <p className="text-gray-500">No academic notes uploaded yet.</p> : (
             <div className="space-y-4 max-h-[42rem] overflow-y-auto pr-2">
               {sortedLectures.map(vl => (
                 <div key={vl.id} className="bg-brand-dark rounded-lg p-4">
@@ -1031,81 +1152,181 @@ const QuestionPaperPage: React.FC<{ user: User; examPapers: ExamPaper[]; addExam
   );
 };
 
-const HybridClassroomPage: React.FC<{ user: User; lessonPlans: LessonPlan[]; addLessonPlan: (lp: Omit<LessonPlan, 'id'>) => Promise<void>; deleteLessonPlan: (id: string) => Promise<void>; setLessonPlanStatus: (id: string, status: CurriculumStatus) => Promise<void>; }> = ({ user, lessonPlans, addLessonPlan, deleteLessonPlan, setLessonPlanStatus }) => {
+const SmartResourceHubPage: React.FC<{ 
+  user: User; 
+  resourceHubs: SavedResourceHub[]; 
+  addResourceHub: (a: Omit<SavedResourceHub, 'id'>) => Promise<void>; 
+  updateResourceHub: (a: SavedResourceHub) => Promise<void>;
+  deleteResourceHub: (id: string) => Promise<void>; 
+  setResourceHubStatus: (id: string, status: CurriculumStatus) => Promise<void>; 
+}> = ({ user, resourceHubs, addResourceHub, updateResourceHub, deleteResourceHub, setResourceHubStatus }) => {
   const [topic, setTopic] = useState('');
-  const [onlineCount, setOnlineCount] = useState(15);
-  const [offlineCount, setOfflineCount] = useState(15);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [subject, setSubject] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<ResourceHubData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ segments: any[] } | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const modeColors: Record<string, string> = { both: 'text-brand-cyan', online: 'text-blue-400', offline: 'text-yellow-400' };
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!topic.trim()) return;
-    setIsGenerating(true); setError(null); setPreview(null);
-    try { const plan = await generateHybridLessonPlanAI(topic, onlineCount, offlineCount); setPreview(plan); }
-    catch (err: any) { setError(err.message || 'Failed to generate lesson plan.'); }
-    finally { setIsGenerating(false); }
+    if (!topic.trim() || !subject.trim()) return;
+    setIsLoading(true); setError(null); setResult(null);
+    try {
+      const data = await generateResources(topic, subject);
+      setResult(data);
+    } catch (err: any) {
+      setError(err.message || "Failed to suggest resources.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSave = async () => {
-    if (!preview || !user.classCode) return;
-    try { await addLessonPlan({ topic, onlineCount, offlineCount, totalDuration: 60, segments: preview.segments, classCode: user.classCode, createdAt: new Date().toISOString() }); setPreview(null); setTopic(''); alert('Lesson plan saved!'); }
-    catch (err: any) { alert(err.message); }
+    if (!result || !user.classCode) return;
+    try {
+      await addResourceHub({
+        topic,
+        data: result,
+        classCode: user.classCode,
+        createdAt: new Date().toISOString(),
+        status: 'draft'
+      });
+      setResult(null);
+      setTopic('');
+      setSubject('');
+      alert('Resources saved to your hub!');
+    } catch (err: any) {
+      alert(err.message);
+    }
   };
 
   return (
     <div className="space-y-8">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
-          <h2 className="text-2xl font-bold mb-2">Hybrid Classroom Manager</h2>
-          <p className="text-gray-400 mb-6">Generate a 60-minute synchronized lesson plan for both online and offline students.</p>
-          <form onSubmit={handleGenerate} className="space-y-4">
-            <div><label className="block text-sm font-medium text-gray-300 mb-2">Lesson Topic</label><input type="text" value={topic} onChange={e => setTopic(e.target.value)} required placeholder="e.g., Introduction to Neural Networks" className="w-full bg-brand-dark border border-brand-border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-cyan focus:outline-none" /></div>
-            <div className="flex gap-4">
-              <div className="flex-1"><label className="block text-sm font-medium text-gray-300 mb-2">Online Students</label><input type="number" min={0} value={onlineCount} onChange={e => setOnlineCount(Number(e.target.value))} className="w-full bg-brand-dark border border-brand-border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-cyan focus:outline-none" /></div>
-              <div className="flex-1"><label className="block text-sm font-medium text-gray-300 mb-2">Offline Students</label><input type="number" min={0} value={offlineCount} onChange={e => setOfflineCount(Number(e.target.value))} className="w-full bg-brand-dark border border-brand-border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-cyan focus:outline-none" /></div>
-            </div>
-            <button type="submit" disabled={isGenerating} className="w-full bg-brand-cyan text-white font-bold py-3 rounded-lg hover:bg-cyan-500 disabled:bg-cyan-800 disabled:cursor-not-allowed flex items-center justify-center gap-2">{isGenerating ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Generating...</> : <><SparklesIcon />Generate Lesson Plan</>}</button>
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-          </form>
-          {preview && <button onClick={handleSave} className="mt-6 w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700">Save Lesson Plan</button>}
-        </div>
-        <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8 overflow-y-auto max-h-[80vh]">
-          <h2 className="text-2xl font-bold mb-6">60-Minute Timeline</h2>
-          {!preview ? <p className="text-gray-500">Your lesson plan will appear here.</p> : (
-            <div className="space-y-3">
-              <div className="flex gap-4 text-xs text-gray-400 mb-4"><span className="text-brand-cyan">● Both modes</span><span className="text-blue-400">● Online focus</span><span className="text-yellow-400">● Offline focus</span></div>
-              {preview.segments.map((seg: any, i: number) => (<div key={i} className="bg-brand-dark p-4 rounded-lg"><div className="flex justify-between items-start mb-2"><h4 className="font-semibold">{seg.title}</h4><span className="text-xs text-gray-400 flex-shrink-0 ml-2">{seg.startMin}–{seg.endMin} min</span></div><p className="text-sm text-gray-300 mb-2">{seg.activity}</p><div className="flex items-center justify-between"><span className={`text-xs font-semibold ${modeColors[seg.mode] || 'text-gray-400'}`}>{seg.mode === 'both' ? 'All students' : seg.mode === 'online' ? 'Online focus' : 'Offline focus'}</span><div className="flex gap-2 flex-wrap">{seg.tools?.map((tool: string, ti: number) => <span key={ti} className="text-xs bg-brand-dark-blue border border-brand-border px-2 py-0.5 rounded">{tool}</span>)}</div></div></div>))}
-            </div>
-          )}
-        </div>
-      </div>
       <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
-        <h2 className="text-2xl font-bold mb-6">Saved Lesson Plans ({lessonPlans.length})</h2>
-        {lessonPlans.length === 0 ? <p className="text-gray-500">No lesson plans saved yet.</p> : (
-          <div className="space-y-4">{lessonPlans.map(lp => (
-            <div key={lp.id} className="bg-brand-dark rounded-lg p-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h3 className="font-semibold">{lp.topic}</h3>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${lp.status === 'published' ? 'bg-green-900/60 text-green-300' : 'bg-yellow-900/60 text-yellow-300'}`}>{lp.status === 'published' ? 'Published' : 'Draft'}</span>
-                  </div>
-                  <p className="text-sm text-gray-400">{lp.onlineCount} online · {lp.offlineCount} offline · {new Date(lp.createdAt).toLocaleDateString()}</p>
+        <h2 className="text-2xl font-bold mb-2 text-brand-cyan">Smart Resource Hub</h2>
+        <p className="text-gray-400 mb-6 font-medium">Discover best real-world books, videos, and teaching guides categorized by level.</p>
+        <form onSubmit={handleGenerate} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <input type="text" value={subject} onChange={e => setSubject(e.target.value)} required placeholder="Subject (e.g. Chemistry)" className="bg-brand-dark border border-brand-border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-cyan focus:outline-none" />
+          <input type="text" value={topic} onChange={e => setTopic(e.target.value)} required placeholder="Topic (e.g. Organic Reactions)" className="md:col-span-2 bg-brand-dark border border-brand-border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-cyan focus:outline-none" />
+          <button type="submit" disabled={isLoading} className="bg-brand-cyan text-white font-bold py-3 px-8 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">{isLoading ? 'Finding...' : <><SparklesIcon /> Find Resources</>}</button>
+        </form>
+        {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
+      </div>
+
+      {result && (
+        <div className="space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {(['beginner', 'intermediate', 'advanced'] as const).map(level => (
+              <div key={level} className="bg-brand-dark-blue border border-brand-border rounded-xl p-6 hover:border-brand-cyan transition-all shadow-lg relative overflow-hidden flex flex-col">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-brand-cyan/10 rounded-bl-full flex items-center justify-center">
+                    <BookOpenIcon className="text-brand-cyan opacity-40" />
                 </div>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setLessonPlanStatus(lp.id, lp.status === 'published' ? 'draft' : 'published')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${lp.status === 'published' ? 'border-yellow-700 text-yellow-400 hover:bg-yellow-900/20' : 'border-green-700 text-green-400 hover:bg-green-900/20'}`}>{lp.status === 'published' ? 'Unpublish' : 'Publish'}</button>
-                  <button onClick={() => setExpandedId(expandedId === lp.id ? null : lp.id)} className="text-brand-cyan text-sm hover:underline">{expandedId === lp.id ? 'Collapse' : 'View'}</button>
-                  <button onClick={() => deleteLessonPlan(lp.id)} className="text-red-500 hover:text-red-400 p-1"><TrashIcon /></button>
+                <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded bg-brand-cyan/20 text-brand-cyan mb-4 self-start`}>{level}</span>
+                
+                <div className="space-y-4 flex-grow">
+                  <div>
+                    <span className="block text-[10px] uppercase text-gray-500 font-bold mb-1">Resource Name</span>
+                    <input 
+                      type="text" 
+                      value={result[level].name} 
+                      onChange={(e) => {
+                        const next = {...result};
+                        next[level].name = e.target.value;
+                        setResult(next);
+                      }}
+                      className="w-full bg-brand-dark border border-brand-border rounded p-2 text-white font-bold text-sm focus:border-brand-cyan"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="block text-[10px] uppercase text-gray-500 font-bold mb-1">Type</span>
+                      <input 
+                        type="text" 
+                        value={result[level].type} 
+                        onChange={(e) => {
+                          const next = {...result};
+                          next[level].type = e.target.value;
+                          setResult(next);
+                        }}
+                        className="w-full bg-brand-dark border border-brand-border rounded p-2 text-brand-cyan text-xs font-bold focus:border-brand-cyan"
+                      />
+                    </div>
+                    <div className="opacity-60 flex items-end pb-1 text-[10px] font-bold text-gray-400">
+                        {level === 'beginner' ? 'Foundational' : level === 'intermediate' ? 'Practical' : 'Expert'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="block text-[10px] uppercase text-gray-500 font-bold mb-1">Why Useful</span>
+                    <textarea 
+                      value={result[level].whyUseful} 
+                      onChange={(e) => {
+                        const next = {...result};
+                        next[level].whyUseful = e.target.value;
+                        setResult(next);
+                      }}
+                      className="w-full bg-brand-dark border border-brand-border rounded p-2 text-gray-300 text-xs focus:border-brand-cyan"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div>
+                    <span className="block text-[10px] uppercase text-gray-500 font-bold mb-1">Suggested Use</span>
+                    <textarea 
+                      value={result[level].suggestedUse} 
+                      onChange={(e) => {
+                        const next = {...result};
+                        next[level].suggestedUse = e.target.value;
+                        setResult(next);
+                      }}
+                      className="w-full bg-brand-dark border border-brand-border rounded p-2 text-gray-400 text-xs italic focus:border-brand-cyan"
+                      rows={2}
+                    />
+                  </div>
                 </div>
               </div>
-              {expandedId === lp.id && (<div className="mt-3 space-y-2 border-t border-brand-border pt-3">{lp.segments.map((seg: any, si: number) => (<div key={si} className="flex justify-between text-sm bg-brand-dark-blue p-2 rounded"><span>{seg.startMin}–{seg.endMin} min: {seg.title}</span><span className="text-gray-400">{seg.tools?.join(', ')}</span></div>))}</div>)}
+            ))}
+          </div>
+
+          <div className="bg-brand-dark-blue border border-brand-border rounded-xl p-6 border-l-4 border-brand-cyan shadow-xl">
+            <h3 className="text-lg font-bold mb-2 flex items-center gap-2 text-brand-cyan"><SparklesIcon /> Pro Teaching Tip</h3>
+            <textarea 
+              value={result.teachingTip} 
+              onChange={(e) => {
+                setResult({...result, teachingTip: e.target.value});
+              }}
+              className="w-full bg-brand-dark border border-brand-border rounded p-3 text-sm text-gray-200 focus:border-brand-cyan"
+              rows={2}
+            />
+          </div>
+
+          <button onClick={handleSave} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl transition-all shadow-glow flex items-center justify-center gap-2">
+            <UploadIcon /> Save Recommendations to Hub
+          </button>
+        </div>
+      )}
+
+      <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
+        <h2 className="text-2xl font-bold mb-6">Saved Topic Resources</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {resourceHubs.length === 0 ? <p className="text-gray-500 italic">No resource sets saved yet.</p> : resourceHubs.map(hub => (
+            <div key={hub.id} className="bg-brand-dark p-6 rounded-xl border border-brand-border">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="font-bold text-lg">{hub.topic}</h3>
+                <button onClick={() => deleteResourceHub(hub.id)} className="text-red-500 hover:text-red-400"><TrashIcon /></button>
+              </div>
+              <div className="space-y-2 text-xs">
+                <p className="text-gray-400"><span className="text-brand-cyan font-bold">Beginner:</span> {hub.data.beginner.name}</p>
+                <p className="text-gray-400"><span className="text-brand-cyan font-bold">Mid:</span> {hub.data.intermediate.name}</p>
+                <p className="text-gray-400"><span className="text-brand-cyan font-bold">Adv:</span> {hub.data.advanced.name}</p>
+              </div>
+              <div className="mt-4 pt-4 border-t border-brand-border flex justify-between items-center">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${hub.status === 'published' ? 'bg-green-900/60 text-green-300' : 'bg-yellow-900/60 text-yellow-300'}`}>{hub.status || 'draft'}</span>
+                <button onClick={() => setResourceHubStatus(hub.id, hub.status === 'published' ? 'draft' : 'published')} className="text-[10px] text-brand-cyan font-bold hover:underline">{hub.status === 'published' ? 'Switch to Draft' : 'Publish to Students'}</button>
+              </div>
             </div>
-          ))}</div>
-        )}
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1358,7 +1579,21 @@ const QuizGenerationPage: React.FC<Pick<TeacherPortalProps, 'user' | 'quizzes' |
         </div>
         <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
           <h2 className="text-2xl font-bold mb-6">Quiz Preview</h2>
-          {generatedQuiz ? (<div className="h-full flex flex-col"><h3 className="text-xl font-bold mb-4">{generatedQuiz.topic}</h3><div className="space-y-4 mb-6 flex-grow overflow-y-auto pr-2 max-h-80">{generatedQuiz.questions.map((q, i) => (<div key={i} className="bg-brand-dark p-3 rounded-md"><p className="font-semibold">{i + 1}. {q.questionText}</p><ul className="list-disc list-inside ml-4 mt-1 text-sm text-gray-400">{q.options.map((opt, j) => <li key={j} className={j === q.correctAnswerIndex ? 'text-green-400 font-medium' : ''}>{opt}</li>)}</ul></div>))}</div><button onClick={handleSaveQuiz} disabled={isSaving} className="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 disabled:bg-green-800 disabled:cursor-not-allowed">{isSaving ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</> : <><BookOpenIcon /> Save and Publish Quiz</>}</button></div>) : (<div className="flex items-center justify-center h-full text-center text-gray-500"><p>Generated quiz will be displayed here for review before saving.</p></div>)}
+          {generatedQuiz ? (<div className="h-full flex flex-col"><h3 className="text-xl font-bold mb-4">{generatedQuiz.topic}</h3><div className="space-y-4 mb-6 flex-grow overflow-y-auto pr-2 max-h-80">{generatedQuiz.questions.map((q, i) => (
+            <div key={i} className="bg-brand-dark p-4 rounded-lg border border-brand-border group hover:border-brand-cyan transition-all">
+              <p className="font-bold flex items-center gap-2">{i + 1}. {q.questionText}</p>
+              <ul className="list-disc list-inside ml-6 mt-2 text-sm text-gray-400 grid grid-cols-1 md:grid-cols-2 gap-2">
+                {q.options.map((opt, j) => <li key={j} className={j === q.correctAnswerIndex ? 'text-green-400 font-bold bg-green-900/10 p-2 rounded border border-green-900/30' : 'bg-brand-dark-blue/50 p-2 rounded border border-brand-border/30'}>{opt}</li>)}
+              </ul>
+              {q.explanation && (
+                <div className="mt-4 p-4 bg-brand-dark-blue/80 rounded-lg border-l-4 border-brand-cyan text-xs">
+                  <p className="font-bold text-brand-cyan mb-1 flex items-center gap-2"><SparklesIcon /> AI Explanation:</p>
+                  <p className="text-gray-300 mb-2">{q.explanation}</p>
+                  {q.whyOthersWrong && <p className="text-gray-500 italic"><span className="font-bold">Why others:</span> {q.whyOthersWrong}</p>}
+                </div>
+              )}
+            </div>
+          ))}</div><button onClick={handleSaveQuiz} disabled={isSaving} className="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 disabled:bg-green-800 disabled:cursor-not-allowed">{isSaving ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</> : <><BookOpenIcon /> Save and Publish Quiz</>}</button></div>) : (<div className="flex items-center justify-center h-full text-center text-gray-500"><p>Generated quiz will be displayed here for review before saving.</p></div>)}
         </div>
       </div>
       <div className="mt-8 bg-brand-dark-blue border border-brand-border rounded-lg p-8">
@@ -1380,7 +1615,7 @@ const QuizGenerationPage: React.FC<Pick<TeacherPortalProps, 'user' | 'quizzes' |
               </div>
             </div>
           ))}</div>
-        ) : <p className="text-gray-500">You haven't created any quizzes yet.</p>}
+        ) : <p className="text-gray-500 text-center py-8">You haven't created any quizzes yet.</p>}
       </div>
     </>
   );
@@ -1388,45 +1623,492 @@ const QuizGenerationPage: React.FC<Pick<TeacherPortalProps, 'user' | 'quizzes' |
 
 const VisualizationPage: React.FC<{ quizzes: Quiz[], submissions: Submission[] }> = ({ quizzes, submissions }) => {
   if (quizzes.length === 0) return (<div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8 text-center"><h2 className="text-2xl font-bold mb-4">No Quizzes Found</h2><p className="text-gray-400">Create a quiz in the "Quiz Generation" tab to see student analytics here.</p></div>);
+  
+  const streakCount = submissions.length > 0 ? Array.from(new Set(submissions.map(s => s.submittedAt.split('T')[0]))).length : 0;
+
   return (
     <div className="space-y-8">
+      <div className="bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 rounded-xl p-8 flex items-center justify-between shadow-lg">
+        <div className="flex items-center gap-6">
+          <div className="text-6xl text-orange-400 drop-shadow-glow">🔥</div>
+          <div>
+            <h3 className="text-3xl font-bold text-white mb-1">Class Persistence Streak</h3>
+            <p className="text-xl text-orange-200 font-bold">Current Streak: {streakCount} Days of Learning!</p>
+            <p className="text-sm text-orange-100/70 mt-2 italic">"Consistently showing up is half the battle won. Great job, class!"</p>
+          </div>
+        </div>
+        <div className="text-center px-6 py-3 bg-brand-dark/40 rounded-lg border border-orange-500/20">
+            <div className="text-4xl font-bold text-white">{submissions.length}</div>
+            <div className="text-[10px] uppercase tracking-widest text-orange-300 font-bold">Quizzes Attempted</div>
+        </div>
+      </div>
+
       {quizzes.map(quiz => {
         const quizSubmissions = submissions.filter(s => s.quizId === quiz.id);
         const averageScore = quizSubmissions.length > 0 ? (quizSubmissions.reduce((acc, s) => acc + s.score, 0) / quizSubmissions.length).toFixed(1) : 0;
+        
+        const high = quizSubmissions.filter(s => (s.score / s.totalQuestions) > 0.75).length;
+        const med = quizSubmissions.filter(s => {
+            const p = s.score / s.totalQuestions;
+            return p >= 0.4 && p <= 0.75;
+        }).length;
+        const low = quizSubmissions.filter(s => (s.score / s.totalQuestions) < 0.4).length;
+        const total = Math.max(quizSubmissions.length, 1);
+
         return (
-          <div key={quiz.id} className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
-            <h3 className="text-2xl font-bold mb-4">{quiz.topic}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 text-center"><div className="bg-brand-dark p-4 rounded-lg"><p className="text-sm text-gray-400">Attempts</p><p className="text-3xl font-bold">{quizSubmissions.length}</p></div><div className="bg-brand-dark p-4 rounded-lg"><p className="text-sm text-gray-400">Average Score</p><p className="text-3xl font-bold">{averageScore} / {quiz.questions.length}</p></div></div>
-            <h4 className="text-xl font-semibold mb-4">Student Results</h4>
-            {quizSubmissions.length > 0 ? (<div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-brand-dark"><tr><th className="p-3">Student</th><th className="p-3">Score</th><th className="p-3">Date</th></tr></thead><tbody>{quizSubmissions.map((sub, index) => (<tr key={index} className="border-b border-brand-border"><td className="p-3">{sub.studentName}</td><td className="p-3">{sub.score} / {sub.totalQuestions}</td><td className="p-3 text-sm text-gray-400">{new Date(sub.submittedAt).toLocaleString()}</td></tr>))}</tbody></table></div>) : <p className="text-gray-500 text-center py-4">No students have taken this quiz yet.</p>}
-          </div>
-        );
-      })}
+          <div key={quiz.id} className="bg-brand-dark-blue border border-brand-border rounded-lg p-8 shadow-xl">
+            <h3 className="text-2xl font-bold mb-6 border-l-4 border-brand-cyan pl-4">{quiz.topic}</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                <div className="bg-brand-dark p-6 rounded-xl border border-brand-border">
+                    <p className="text-sm text-gray-400 mb-1">Total Attempts</p>
+                    <p className="text-4xl font-black text-white">{quizSubmissions.length}</p>
+                </div>
+                <div className="bg-brand-dark p-6 rounded-xl border border-brand-border">
+                    <p className="text-sm text-gray-400 mb-1">Average Score</p>
+                    <p className="text-4xl font-black text-brand-cyan">{averageScore} <span className="text-lg font-normal text-gray-500">/ {quiz.questions.length}</span></p>
+                </div>
+                <div className="bg-brand-dark p-6 rounded-xl border border-brand-border">
+                    <p className="text-sm text-gray-400 mb-2">Performance Breakdown</p>
+                    <div className="flex gap-2 items-end h-12">
+                        <div className="w-full bg-green-500/30 border-t-2 border-green-500 rounded-t-sm" style={{ height: `${(high/total)*100 || 5}%` }}></div>
+                        <div className="w-full bg-yellow-500/30 border-t-2 border-yellow-500 rounded-t-sm" style={{ height: `${(med/total)*100 || 5}%` }}></div>
+                        <div className="w-full bg-red-500/30 border-t-2 border-red-500 rounded-t-sm" style={{ height: `${(low/total)*100 || 5}%` }}></div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row items-center gap-12 mb-8 bg-brand-dark/30 p-8 rounded-xl border border-brand-border/50">
+                <div className="relative w-48 h-48 rounded-full border-[12px] border-brand-border flex items-center justify-center overflow-hidden">
+                    <div className="absolute inset-0" style={{ 
+                        background: `conic-gradient(#10b981 0% ${(high/total)*100}%, #f59e0b ${(high/total)*100}% ${((high+med)/total)*100}%, #ef4444 ${((high+med)/total)*100}% 100%)` 
+                    }}></div>
+                    <div className="absolute inset-4 rounded-full bg-brand-dark-blue flex items-center justify-center flex-col shadow-2xl">
+                        <span className="text-3xl font-bold">{quizSubmissions.length}</span>
+                        <span className="text-[10px] text-gray-400 uppercase tracking-tighter">Participants</span>
+                    </div>
+                </div>
+                <div className="flex-1 w-full space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-brand-dark rounded-lg border-l-4 border-green-500">
+                        <span className="font-semibold">High (&gt;75%)</span>
+                        <span className="font-bold text-green-400">{high} Students ({Math.round((high/total)*100)}%)</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-brand-dark rounded-lg border-l-4 border-yellow-500">
+                        <span className="font-semibold">Medium (40-75%)</span>
+                        <span className="font-bold text-yellow-400">{med} Students ({Math.round((med/total)*100)}%)</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-brand-dark rounded-lg border-l-4 border-red-500">
+                        <span className="font-semibold">Low (&lt;40%)</span>
+                        <span className="font-bold text-red-400">{low} Students ({Math.round((low/total)*100)}%)</span>
+                    </div>
+                </div>
+            </div>
+            </div>
+          );
+        })}
     </div>
   );
 };
-const AssignmentsPage: React.FC<{ assignments: Assignment[], addAssignment: (a: Omit<Assignment, 'id'>) => Promise<void>, updateAssignment: (a: Assignment) => Promise<void>, deleteAssignment: (id: string) => Promise<void>, assignmentSubmissions: AssignmentSubmission[], updateAssignmentSubmission: (id: string, score: number, aiFeedback?: string) => Promise<void>, user: User, setAssignmentStatus: (id: string, status: CurriculumStatus) => Promise<void> }> = ({ assignments, addAssignment, updateAssignment, deleteAssignment, assignmentSubmissions, updateAssignmentSubmission, user, setAssignmentStatus }) => {
-  const [topic, setTopic] = useState('');
-  const [instructions, setInstructions] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [totalPoints, setTotalPoints] = useState(10);
-  const [isLoading, setIsLoading] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error', message: string} | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+const AnimationGeneratorPage: React.FC<{ 
+  user: User; 
+  animationScripts: AnimationScript[];
+  addAnimationScript: (a: Omit<AnimationScript, 'id'>) => Promise<void>; 
+  updateAnimationScript: (a: AnimationScript) => Promise<void>;
+  deleteAnimationScript: (id: string) => Promise<void>;
+  setAnimationScriptStatus: (id: string, status: CurriculumStatus) => Promise<void>; 
+  isOfflineMode: boolean; 
+}> = ({ user, animationScripts, addAnimationScript, updateAnimationScript, deleteAnimationScript, setAnimationScriptStatus, isOfflineMode }) => {
+  const [topic, setTopic] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [previewScript, setPreviewScript] = useState<Omit<AnimationScript, 'id' | 'classCode' | 'createdAt'> | null>(null);
+  const [editingScript, setEditingScript] = useState<AnimationScript | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [playingVideo, setPlayingVideo] = useState<AnimationScript | Omit<AnimationScript, 'id' | 'classCode' | 'createdAt'> | null>(null);
+
+  const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!topic || !instructions || !dueDate || !user.classCode) return;
-    setIsLoading(true);
-    setFeedback(null);
+    if (!topic.trim()) return;
+    setIsLoading(true); setError(null); setPreviewScript(null); setEditingScript(null); setSuccessMessage(null);
     try {
-      await addAssignment({
-        topic, instructions, dueDate, totalPoints, classCode: user.classCode,
+      const result = await generateAnimationScript(topic);
+      setPreviewScript(result);
+    } catch (err: any) {
+      setError(err.message || "Failed to generate script.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSavePreview = async () => {
+    if (!previewScript || !user.classCode) return;
+    try {
+      await addAnimationScript({
+        ...previewScript,
+        classCode: user.classCode,
         createdAt: new Date().toISOString()
       });
-      setFeedback({ type: 'success', message: 'Assignment created successfully!' });
-      setTopic(''); setInstructions(''); setDueDate(''); setTotalPoints(10);
+      setPreviewScript(null);
+      setTopic('');
+      setSuccessMessage('Animation script saved!');
     } catch (err: any) {
-      setFeedback({ type: 'error', message: err.message || 'Failed to create assignment' });
+      setError(err.message || 'Failed to save script.');
+    }
+  };
+
+  const handleUpdateField = (field: 'visual' | 'voiceScript', sceneIdx: number, value: string) => {
+    if (editingScript) {
+      const next = { ...editingScript };
+      next.scenes[sceneIdx][field] = value;
+      setEditingScript(next);
+    } else if (previewScript) {
+      const next = { ...previewScript };
+      next.scenes[sceneIdx][field] = value;
+      setPreviewScript(next);
+    }
+  };
+
+  const handleSaveUpdate = async () => {
+    if (!editingScript) return;
+    try {
+      await updateAnimationScript(editingScript);
+      setSuccessMessage('Animation script updated successfully!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const activeScript = editingScript || previewScript;
+
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
+          <h2 className="text-2xl font-bold mb-6 text-white">Create Educational Animation</h2>
+          <form onSubmit={handleGenerate} className="space-y-6">
+            <div><label className="block text-sm font-medium text-gray-300 mb-2">Topic for Animation</label><input type="text" value={topic} onChange={e => setTopic(e.target.value)} placeholder="e.g., How Planets Orbit the Sun" className="w-full bg-brand-dark border border-brand-border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-cyan outline-none" /></div>
+            <button type="submit" disabled={isLoading} className="w-full bg-brand-cyan text-white font-bold py-3 rounded-lg hover:opacity-90 flex items-center justify-center gap-2 transition-all">{isLoading ? <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Generating Script...</> : <><PlayIcon /> Generate 45s Animation Script</>}</button>
+            {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+            {successMessage && <p className="text-green-500 text-sm mt-2 font-medium">{successMessage}</p>}
+          </form>
+
+          <div className="mt-12">
+            <h3 className="text-xl font-bold mb-4 text-brand-cyan">Saved Animations ({animationScripts.length})</h3>
+            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+              {animationScripts.length === 0 ? <p className="text-gray-500 italic">No animations saved yet.</p> : animationScripts.map(s => (
+                <div key={s.id} className="bg-brand-dark p-4 rounded-lg border border-brand-border flex justify-between items-center group hover:border-brand-cyan/30 transition-all shadow-sm">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-100">{s.title}</p>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${s.status === 'published' ? 'bg-green-900/40 text-green-300 border border-green-800/50' : 'bg-yellow-900/40 text-yellow-300 border border-yellow-800/50'}`}>{s.status || 'draft'}</span>
+                    </div>
+                    <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-widest">{s.scenes.length} Scenes · {new Date(s.createdAt).toLocaleDateString()}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setPlayingVideo(s)} className="text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg border border-brand-cyan bg-brand-cyan/10 text-brand-cyan hover:bg-brand-cyan hover:text-white transition-all">Play</button>
+                    <button onClick={() => { setEditingScript(s); setPreviewScript(null); }} className="text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg border border-brand-border text-gray-400 hover:border-brand-cyan hover:text-brand-cyan transition-all">Edit</button>
+                    <button onClick={() => deleteAnimationScript(s.id)} className="text-red-500/60 hover:text-red-400 p-2 transition-colors"><TrashIcon /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-white">{editingScript ? 'Refine Animation' : 'Script Visualization'}</h2>
+            <div className="flex gap-2">
+              {activeScript && (
+                <button onClick={() => setPlayingVideo(activeScript)} className="text-[10px] font-bold uppercase tracking-widest bg-brand-cyan/20 text-brand-cyan border border-brand-cyan/50 px-3 py-1.5 rounded-lg hover:bg-brand-cyan hover:text-white transition-all flex items-center gap-2"><PlayIcon /> Watch Preview</button>
+              )}
+              {editingScript && (
+                <>
+                  <button onClick={() => setEditingScript(null)} className="text-[10px] font-bold uppercase tracking-widest border border-brand-border text-gray-400 px-3 py-1.5 rounded-lg hover:bg-brand-border transition-colors">Discard</button>
+                  <button onClick={handleSaveUpdate} className="text-[10px] font-bold uppercase tracking-widest bg-brand-cyan text-white px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity shadow-glow">Update Script</button>
+                </>
+              )}
+              {!editingScript && previewScript && (
+                <button onClick={handleSavePreview} className="text-[10px] font-bold uppercase tracking-widest bg-green-600 text-white px-4 py-1.5 rounded-lg hover:bg-green-700 transition-colors shadow-lg">Save to Portal</button>
+              )}
+            </div>
+          </div>
+          
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center h-[60vh] text-center text-gray-500">
+               <div className="w-16 h-16 border-4 border-brand-cyan border-t-transparent rounded-full animate-spin mb-6"></div>
+               <p className="text-lg font-medium text-gray-400">AI is directng your educational animation...</p>
+               <p className="text-xs text-gray-600 mt-2 italic px-8">Calculating scene dynamics and optimal narration for 45s runtime</p>
+            </div>
+          ) : activeScript ? (
+             <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-3 custom-scrollbar">
+                <div className="bg-brand-dark/40 p-4 rounded-xl border border-brand-border/30">
+                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-[0.2em] mb-2 block">Animation Title</span>
+                  <input 
+                    type="text" 
+                    value={activeScript.title} 
+                    onChange={(e) => {
+                      if (editingScript) setEditingScript({...editingScript, title: e.target.value});
+                      else if (previewScript) setPreviewScript({...previewScript, title: e.target.value});
+                    }}
+                    className="text-2xl font-black text-brand-cyan bg-transparent border-b border-transparent hover:border-brand-border/30 focus:border-brand-cyan/50 w-full outline-none py-1 transition-all" 
+                  />
+                </div>
+                
+                {activeScript.scenes.map((scene, i) => (
+                  <div key={i} className="bg-brand-dark p-6 rounded-2xl border border-brand-border/80 hover:border-brand-cyan/60 transition-all group shadow-2xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-brand-cyan/5 -mr-12 -mt-12 rounded-full group-hover:bg-brand-cyan/10 transition-colors"></div>
+                    <div className="flex justify-between items-center mb-5">
+                      <div className="flex items-center gap-3">
+                        <p className="text-[11px] font-black uppercase tracking-[0.25em] text-brand-cyan/80 bg-brand-cyan/10 px-3 py-1 rounded-full border border-brand-cyan/20">Scene {i + 1}</p>
+                        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Dur: ~{Math.round(45/activeScript.scenes.length)}s</span>
+                      </div>
+                      <TTSPlayer text={scene.voiceScript} language="English" />
+                    </div>
+                    <div className="space-y-5">
+                      <div className="relative group/field">
+                        <span className="font-black text-gray-500 uppercase text-[9px] tracking-widest block mb-2 opacity-70 group-hover/field:text-brand-cyan transition-colors">Visual Direction & Action</span>
+                        <textarea 
+                          value={scene.visual} 
+                          onChange={(e) => handleUpdateField('visual', i, e.target.value)}
+                          className="w-full bg-brand-dark-blue/50 border border-brand-border/50 rounded-xl p-4 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-brand-cyan/40 transition-all resize-none shadow-inner"
+                          rows={2}
+                          placeholder="Describe the onscreen activity..."
+                        />
+                      </div>
+                      <div className="relative group/field">
+                        <span className="font-black text-gray-500 uppercase text-[9px] tracking-widest block mb-2 opacity-70 group-hover/field:text-brand-cyan transition-colors">Narrator Script (Teacher Voice)</span>
+                        <textarea 
+                          value={scene.voiceScript} 
+                          onChange={(e) => handleUpdateField('voiceScript', i, e.target.value)}
+                          className="w-full bg-brand-dark-blue/80 border border-brand-border/50 rounded-xl p-4 text-sm text-brand-cyan italic font-semibold focus:outline-none focus:ring-1 focus:ring-brand-cyan/40 transition-all resize-none shadow-inner"
+                          rows={3}
+                          placeholder="What should the voiceover say?"
+                        />
+                      </div>
+                    </div>
+                   </div>
+                ))}
+                
+                {activeScript.summary && (
+                  <div className="bg-brand-dark-blue/40 p-6 rounded-2xl border border-dashed border-brand-border hover:border-brand-cyan/40 transition-colors">
+                    <div className="flex items-center gap-2 mb-4 text-brand-cyan/80">
+                      <SparklesIcon className="w-4 h-4" />
+                      <span className="font-black uppercase text-[10px] tracking-widest">Scientific Content Check</span>
+                    </div>
+                    <textarea 
+                      value={activeScript.summary} 
+                      onChange={(e) => {
+                        if (editingScript) setEditingScript({...editingScript, summary: e.target.value});
+                        else if (previewScript) setPreviewScript({...previewScript, summary: e.target.value});
+                      }}
+                      className="w-full bg-transparent border-none text-sm text-gray-400 italic focus:outline-none focus:ring-0 resize-none leading-relaxed"
+                      rows={5}
+                      placeholder="Add scientific context or wrap-up points..."
+                    />
+                  </div>
+                )}
+                
+                <div className="h-4"></div>
+             </div>
+          ) : (
+             <div className="flex flex-col items-center justify-center h-[60vh] text-center text-gray-600 gap-6 mt-4 opacity-50 px-12">
+                <div className="w-24 h-24 bg-brand-dark rounded-full flex items-center justify-center border border-brand-border shadow-2xl">
+                    <PlayIcon className="w-10 h-10 text-brand-cyan" />
+                </div>
+                <div>
+                    <p className="text-xl font-bold text-gray-300">No Script Active</p>
+                    <p className="text-sm text-gray-500 mt-2">Generate a new animation script or select a saved one to refine the visuals and narration.</p>
+                </div>
+             </div>
+          )}
+        </div>
+      </div>
+      {playingVideo && (
+        <AnimationVideoSimulator 
+          script={playingVideo} 
+          onClose={() => setPlayingVideo(null)} 
+        />
+      )}
+    </div>
+  );
+};
+
+const AnimationVideoSimulator: React.FC<{ script: any, onClose: () => void }> = ({ script, onClose }) => {
+  const [currentScene, setCurrentScene] = useState(0);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const isScientific = script.topic.toLowerCase().includes('circulatory') || script.topic.toLowerCase().includes('heart') || script.topic.toLowerCase().includes('blood') || script.topic.toLowerCase().includes('cell');
+
+  const speak = (text: string) => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      if (currentScene < script.scenes.length - 1) {
+        setTimeout(() => setCurrentScene(prev => prev + 1), 1500);
+      } else {
+        setTimeout(() => {
+            alert("Educational Animation Complete!");
+            onClose();
+        }, 1500);
+      }
+    };
+    window.speechSynthesis.speak(utterance);
+  };
+
+  useEffect(() => {
+    speak(script.scenes[currentScene].voiceScript);
+    return () => window.speechSynthesis.cancel();
+  }, [currentScene]);
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center p-4 md:p-12 overflow-hidden transition-all duration-1000">
+      {/* Background Cinematic Particles */}
+      <div className="absolute inset-0 pointer-events-none opacity-40">
+        {[...Array(20)].map((_, i) => (
+          <div 
+            key={i} 
+            className={`absolute rounded-full blur-xl animate-pulse ${isScientific ? 'bg-red-600/30' : 'bg-brand-cyan/20'}`}
+            style={{
+              width: Math.random() * 300 + 100 + 'px',
+              height: Math.random() * 300 + 100 + 'px',
+              left: Math.random() * 100 + '%',
+              top: Math.random() * 100 + '%',
+              animationDuration: Math.random() * 5 + 3 + 's',
+              animationDelay: Math.random() * 5 + 's'
+            }}
+          />
+        ))}
+      </div>
+
+      <button onClick={onClose} className="absolute top-8 right-8 text-white hover:text-brand-cyan flex items-center gap-2 font-black uppercase tracking-[0.2em] text-xs bg-white/5 hover:bg-white/10 px-6 py-3 rounded-full border border-white/10 transition-all z-[120] group shadow-2xl">
+         Exit Laboratory <TrashIcon />
+      </button>
+
+      <div className="w-full max-w-7xl aspect-video bg-[#010204] rounded-[3rem] border-[12px] border-white/5 overflow-hidden shadow-[0_0_150px_rgba(0,0,0,1)] relative flex flex-col">
+        {/* Dynamic Scientific Visuals */}
+        {isScientific && (
+          <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-20">
+             {[...Array(15)].map((_, i) => (
+                <div key={i} className="absolute w-4 h-4 bg-red-500 rounded-full blur-[2px] animate-float-scientific" style={{
+                    left: Math.random() * 100 + '%',
+                    top: Math.random() * 100 + '%',
+                    animationDuration: Math.random() * 10 + 10 + 's',
+                    animationDelay: Math.random() * 10 + 's',
+                    opacity: Math.random()
+                }}></div>
+             ))}
+          </div>
+        )}
+
+        <div className="p-12 pb-0 z-10 flex justify-between items-start">
+           <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                 <div className="w-1.5 h-6 bg-brand-cyan rounded-full animate-pulse"></div>
+                 <span className="text-brand-cyan font-black uppercase text-[10px] tracking-[0.4em]">Premium Visualization Mode</span>
+              </div>
+              <h2 className="text-4xl md:text-5xl font-black text-white tracking-tight drop-shadow-2xl">{script.title}</h2>
+           </div>
+           <div className="bg-white/5 backdrop-blur-2xl border border-white/10 rounded-2xl p-4 text-center min-w-[120px]">
+              <p className="text-[10px] text-white/50 font-bold uppercase tracking-widest mb-1">Chapter</p>
+              <p className="text-2xl font-black text-white">{currentScene + 1} <span className="text-white/30 text-sm font-bold">/ {script.scenes.length}</span></p>
+           </div>
+        </div>
+
+        {/* Cinematic Visual Stage */}
+        <div className="flex-grow flex items-center justify-center relative px-20 text-center perspective-[2500px]">
+          <div 
+             key={currentScene}
+             className="absolute inset-0 flex flex-col items-center justify-center p-20 animate-cinematic-zoom transform-gpu"
+             style={{ transformStyle: 'preserve-3d' }}
+          >
+             <div className="relative">
+                {/* Holographic Ring */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] aspect-square border-2 border-brand-cyan/20 rounded-full animate-spin-slow pointer-events-none"></div>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[110%] aspect-square border border-dashed border-white/10 rounded-full animate-spin-slow-reverse pointer-events-none"></div>
+                
+                <div className="relative z-10 p-16 rounded-[4rem] bg-gradient-to-b from-white/[0.03] to-transparent border border-white/5 shadow-2xl backdrop-blur-xl transition-all duration-1000 group">
+                   <p className="text-white text-5xl md:text-7xl font-black leading-[1.05] drop-shadow-[0_20px_40px_rgba(0,0,0,0.8)] [text-wrap:balance] transition-all group-hover:scale-[1.02]">
+                     {script.scenes[currentScene].visual}
+                   </p>
+                </div>
+             </div>
+             
+             {/* Stage Floor Light */}
+             <div className="absolute bottom-10 w-[60%] h-20 bg-brand-cyan/20 blur-[100px] rounded-full translate-z-[-200px]"></div>
+          </div>
+        </div>
+
+        {/* Narrative Interface */}
+        <div className="mt-auto p-12 bg-gradient-to-t from-black via-black/95 to-transparent border-t border-white/5 relative z-20">
+           <div className={`transition-all duration-1000 ease-in-out transform ${isSpeaking ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}>
+              <div className="max-w-5xl mx-auto flex items-start gap-10">
+                 <div className="flex gap-1.5 pt-4">
+                    {[...Array(4)].map((_, i) => (
+                       <div key={i} className={`w-1 bg-brand-cyan rounded-full animate-audio-bar`} style={{ animationDelay: i * 0.1 + 's', height: Math.random() * 20 + 20 + 'px' }}></div>
+                    ))}
+                 </div>
+                 <p className="text-3xl md:text-4xl text-white/90 font-medium leading-relaxed drop-shadow-xl tracking-tight [text-wrap:balance]">
+                   "{script.scenes[currentScene].voiceScript}"
+                 </p>
+              </div>
+           </div>
+           
+           <div className="mt-16 max-w-6xl mx-auto flex items-center justify-between gap-8">
+              <div className="flex-1 space-y-3">
+                 <div className="flex justify-between text-[9px] font-black tracking-[0.3em] text-white/40 uppercase">
+                    <span>Rendering Scene Sequence</span>
+                    <span className="text-brand-cyan">{Math.round(((currentScene + 1) / script.scenes.length) * 100)}%</span>
+                 </div>
+                 <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                   <div 
+                     className="h-full bg-brand-cyan shadow-[0_0_20px_rgba(0,204,255,0.7)] transition-all duration-1500 ease-out"
+                     style={{ width: `${((currentScene + 1) / script.scenes.length) * 100}%` }}
+                   ></div>
+                 </div>
+              </div>
+              <div className="flex items-center gap-6">
+                 <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-cyan opacity-75"></span>
+                       <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-cyan"></span>
+                    </span>
+                    <span className="text-white/40 font-bold text-[10px] uppercase tracking-widest">Master Studio Live</span>
+                 </div>
+              </div>
+           </div>
+        </div>
+      </div>
+
+      <div className="mt-8 opacity-30">
+         <p className="text-white font-black uppercase text-[9px] tracking-[0.5em]">Classroom AI 4.0 // Cinematic Render Engine</p>
+      </div>
+    </div>
+  );
+};
+
+
+const EklavyaPage: React.FC<{ user: User; submissions: Submission[]; students: User[]; isOfflineMode: boolean; }> = ({ user, submissions, students, isOfflineMode }) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [analysis, setAnalysis] = useState<EklavyaAnalysis | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleAnalyze = async () => {
+    setIsLoading(true); setError(null);
+    try {
+      const data = {
+        submissions: submissions.filter(s => s.classCode === user.classCode),
+        students: students.filter(s => s.classCode === user.classCode && s.role === 'student')
+      };
+      const result = await generateEklavyaAnalysis(data);
+      setAnalysis(result);
+    } catch (err: any) {
+      setError(err.message || "Failed to generate analytics.");
     } finally {
       setIsLoading(false);
     }
@@ -1434,46 +2116,154 @@ const AssignmentsPage: React.FC<{ assignments: Assignment[], addAssignment: (a: 
 
   return (
     <div className="space-y-8">
-      <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
-        <h2 className="text-2xl font-bold mb-4">Create New Assignment</h2>
-        {feedback && <FeedbackBanner type={feedback.type} message={feedback.message} />}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div><label className="block text-sm font-medium mb-1">Topic</label><input type="text" value={topic} onChange={e => setTopic(e.target.value)} required className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2 text-white" /></div>
-          <div><label className="block text-sm font-medium mb-1">Instructions</label><textarea value={instructions} onChange={e => setInstructions(e.target.value)} required className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2 text-white" rows={3}></textarea></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-sm font-medium mb-1">Due Date</label><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2 text-white" style={{ colorScheme: 'dark' }} /></div>
-            <div><label className="block text-sm font-medium mb-1">Total Points</label><input type="number" value={totalPoints} onChange={e => setTotalPoints(Number(e.target.value))} required min={1} className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2 text-white" /></div>
-          </div>
-          <button type="submit" disabled={isLoading} className="bg-brand-cyan text-white py-2 px-6 rounded-lg font-bold">{isLoading ? 'Creating...' : 'Create Assignment'}</button>
-        </form>
+      <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8 flex justify-between items-center bg-gradient-to-r from-brand-dark-blue to-purple-900/10">
+        <div>
+            <h2 className="text-3xl font-bold mb-2">EKLAVYA: AI Class Analytics</h2>
+            <p className="text-gray-400">Holistic performance analysis across all students and topics.</p>
+        </div>
+        <button onClick={handleAnalyze} disabled={isLoading || submissions.length === 0} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg flex items-center gap-3 disabled:opacity-50 transition-all">{isLoading ? 'Analyzing...' : <><SparklesIcon /> Run Global Analysis</>}</button>
       </div>
 
-      <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
-        <h2 className="text-2xl font-bold mb-4">Past Assignments</h2>
-        {assignments.length === 0 ? <p className="text-gray-400">No assignments created yet.</p> : (
-          <div className="space-y-4">
-            {assignments.map(a => {
-               const submissions = assignmentSubmissions.filter(s => s.assignmentId === a.id);
-               return (
-                  <div key={a.id} className="bg-brand-dark border border-brand-border p-4 rounded-lg flex justify-between items-start">
-                    <div className="flex-1 pr-4">
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-lg font-bold">{a.topic}</h3>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${a.status === 'published' ? 'bg-green-900/60 text-green-300' : 'bg-yellow-900/60 text-yellow-300'}`}>{a.status === 'published' ? 'Published' : 'Draft'}</span>
-                      </div>
-                      <p className="text-sm text-gray-400">Due: {new Date(a.dueDate).toLocaleDateString()} | Points: {a.totalPoints}</p>
-                      <p className="mt-2 text-sm">{a.instructions}</p>
-                      {submissions.length > 0 && <div className="mt-4 border-t border-brand-border pt-4"><h4 className="font-semibold mb-2">Submissions ({submissions.length})</h4>{submissions.map(s => <div key={s.id} className="text-sm flex justify-between bg-brand-dark-blue p-3 rounded mb-2 border border-brand-border"><span>{s.studentName} ({s.studentEmail})</span> <span>{s.score !== undefined ? `${s.score}/${a.totalPoints}` : 'Not Graded'}</span></div>)}</div>}
+      {!analysis && !isLoading && <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-20 text-center"><p className="text-gray-500 italic">Click the button above to start AI deep-dive analysis of your classroom data.</p></div>}
+      
+      {isLoading && <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-20 text-center space-y-6">
+        <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+        <p className="text-purple-400 font-bold tracking-widest uppercase text-sm">Eklavya AI is crunching the numbers...</p>
+      </div>}
+
+      {analysis && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-4 space-y-8">
+             <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-6">
+                <h3 className="text-xl font-bold mb-6 text-brand-cyan">Class Level Analysis</h3>
+                <div className="space-y-6">
+                    <div>
+                        <p className="text-xs uppercase text-gray-500 font-bold mb-3 tracking-widest">Class Weak Topics</p>
+                        <div className="space-y-2">{analysis.classSummary.weakTopics.map((t, i) => (
+                          <div key={i} className="flex justify-between items-center bg-red-900/10 p-2 rounded border border-red-900/30">
+                            <span className="text-xs text-red-100">{t.topic}</span>
+                            <span className="text-xs font-black text-red-500">{t.percentage}% Fail Rate</span>
+                          </div>
+                        ))}</div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <button onClick={() => setAssignmentStatus(a.id, a.status === 'published' ? 'draft' : 'published')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${a.status === 'published' ? 'border-yellow-700 text-yellow-400 hover:bg-yellow-900/20' : 'border-green-700 text-green-400 hover:bg-green-900/20'}`}>{a.status === 'published' ? 'Unpublish' : 'Publish'}</button>
-                      <button onClick={() => deleteAssignment(a.id)} className="text-red-500 hover:text-red-400 p-2 rounded-full bg-brand-dark-blue"><TrashIcon /></button>
+                    <div>
+                        <p className="text-xs uppercase text-gray-500 font-bold mb-3 tracking-widest">Class Strong Topics</p>
+                        <div className="space-y-2">{analysis.classSummary.strongTopics.map((t, i) => (
+                          <div key={i} className="flex justify-between items-center bg-green-900/10 p-2 rounded border border-green-900/30">
+                            <span className="text-xs text-green-100">{t.topic}</span>
+                            <span className="text-xs font-black text-green-500">{t.percentage}% Pass Rate</span>
+                          </div>
+                        ))}</div>
                     </div>
-                  </div>
-               );
-            })}
+                </div>
+             </div>
+             
+             <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-6 border-l-4 border-red-500">
+                <h4 className="text-xs uppercase text-gray-500 font-bold mb-4 tracking-widest">Top 3 Weak Students</h4>
+                <div className="space-y-3">
+                  {analysis.top3WeakStudents.map((s, i) => (
+                    <div key={i} className="p-3 bg-red-900/5 rounded-lg border border-red-900/20">
+                      <p className="font-bold text-red-400 text-sm">{s.name}</p>
+                      <p className="text-[10px] text-gray-500 italic">{s.issue}</p>
+                    </div>
+                  ))}
+                </div>
+             </div>
+
+             <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-6 border-l-4 border-purple-500">
+                <h3 className="text-xl font-bold mb-4">Teacher Alert</h3>
+                <ul className="space-y-3">{analysis.classSummary.teacherAlerts.map((a, i) => <li key={i} className="text-sm text-purple-200 bg-purple-900/10 p-3 rounded-lg border border-purple-900/30 flex items-start gap-2"><SparklesIcon /> {a}</li>)}</ul>
+             </div>
+
+             <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-6">
+                <p className="text-xs font-bold text-gray-500 uppercase mb-2">Efficiency Trend</p>
+                <div className="flex items-center gap-4">
+                    <div className={`text-3xl font-black ${analysis.trendAnalysis.toLowerCase().includes('improve') ? 'text-green-400' : 'text-yellow-400'} capitalize`}>{analysis.trendAnalysis}</div>
+                </div>
+             </div>
           </div>
-        )}
+          <div className="lg:col-span-8 bg-brand-dark-blue border border-brand-border rounded-lg p-8">
+             <h3 className="text-2xl font-bold mb-6">Student Deep-Dive</h3>
+             <div className="space-y-4 max-h-[100vh] overflow-y-auto pr-2">
+                {analysis.studentInsights.map((insight, i) => (
+                    <div key={i} className="bg-brand-dark p-6 rounded-xl border border-brand-border group hover:border-purple-500/50 transition-all">
+                        <div className="flex justify-between items-center mb-4">
+                            <h4 className="text-lg font-bold">{insight.name}</h4>
+                            <span className={`text-xl font-black ${insight.avgScore > 75 ? 'text-green-400' : insight.avgScore < 40 ? 'text-red-400' : 'text-yellow-400'}`}>{insight.avgScore}%</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div><p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Struggles With</p><p className="text-xs text-red-400">{insight.weakTopics.join(', ') || 'None'}</p></div>
+                            <div><p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Excels In</p><p className="text-xs text-green-400">{insight.strongTopics.join(', ') || 'None'}</p></div>
+                        </div>
+                        <div className="bg-brand-dark-blue p-4 rounded-lg text-sm text-gray-300 italic">
+                            <span className="text-brand-cyan font-bold not-italic font-mono">AI Suggestion:</span> {insight.suggestions}
+                        </div>
+                    </div>
+                ))}
+             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+const AssignmentsPage: React.FC<{
+  assignments: Assignment[];
+  addAssignment: (a: Omit<Assignment, 'id'>) => Promise<void>;
+  updateAssignment: (id: string, a: Partial<Assignment>) => Promise<void>;
+  deleteAssignment: (id: string) => Promise<void>;
+  assignmentSubmissions: AssignmentSubmission[];
+  updateAssignmentSubmission: (id: string, s: Partial<AssignmentSubmission>) => Promise<void>;
+  user: User;
+  setAssignmentStatus: (id: string, status: 'published' | 'draft') => Promise<void>;
+}> = ({ assignments, addAssignment, deleteAssignment, assignmentSubmissions, user, setAssignmentStatus }) => {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [dueDate, setDueDate] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title || !description || !dueDate) return;
+    await addAssignment({
+      title,
+      description,
+      dueDate,
+      classCode: user.classCode || '',
+      status: 'draft',
+      createdAt: new Date().toISOString()
+    });
+    setTitle('');
+    setDescription('');
+    setDueDate('');
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
+        <h2 className="text-2xl font-bold mb-6">Create New Assignment</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div><label className="block text-sm font-medium text-gray-300 mb-2">Title</label><input type="text" value={title} onChange={e => setTitle(e.target.value)} className="w-full bg-brand-dark border border-brand-border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-cyan focus:outline-none" /></div>
+          <div><label className="block text-sm font-medium text-gray-300 mb-2">Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-brand-dark border border-brand-border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-cyan focus:outline-none" rows={4} /></div>
+          <div><label className="block text-sm font-medium text-gray-300 mb-2">Due Date</label><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="w-full bg-brand-dark border border-brand-border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-cyan focus:outline-none" /></div>
+          <button type="submit" className="w-full bg-brand-cyan text-white font-bold py-3 px-6 rounded-lg hover:bg-cyan-500">Create Assignment</button>
+        </form>
+      </div>
+      <div className="bg-brand-dark-blue border border-brand-border rounded-lg p-8">
+        <h2 className="text-2xl font-bold mb-6">Current Assignments</h2>
+        <div className="space-y-4">
+          {assignments.map(a => (
+            <div key={a.id} className="bg-brand-dark p-4 rounded-lg flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-semibold">{a.title}</h3>
+                <p className="text-sm text-gray-400">Due: {new Date(a.dueDate).toLocaleDateString()}</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <button onClick={() => setAssignmentStatus(a.id, a.status === 'published' ? 'draft' : 'published')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border ${a.status === 'published' ? 'border-yellow-700 text-yellow-400' : 'border-green-700 text-green-400'}`}>{a.status === 'published' ? 'Unpublish' : 'Publish'}</button>
+                <button onClick={() => deleteAssignment(a.id)} className="text-red-500 hover:text-red-400"><TrashIcon /></button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

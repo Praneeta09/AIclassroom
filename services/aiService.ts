@@ -1,9 +1,9 @@
-import { Quiz, LectureSlide, CaseStudy, SharedContent, GeneratedLecture, FAQ } from '../types';
+import { Quiz, LectureSlide, CaseStudy, SharedContent, GeneratedLecture, FAQ, AnimationScript, EklavyaAnalysis } from '../types';
 
 /**
  * Centrally route AI requests to specific backend endpoints.
  */
-export const routeAIRequest = async (endpoint: string, body: any): Promise<string> => {
+export const routeAIRequest = async (endpoint: string, body: any): Promise<any> => {
     try {
         const response = await fetch(endpoint, {
             method: 'POST',
@@ -14,7 +14,7 @@ export const routeAIRequest = async (endpoint: string, body: any): Promise<strin
         if (!response.ok) throw new Error(`AI Request to ${endpoint} failed`);
         const data = await response.json();
         
-        return data.text || "";
+        return data.text || data;
     } catch (e) {
         console.error(`AI Error (${endpoint}):`, e);
         throw e;
@@ -36,7 +36,7 @@ export const generateLectureSlides = async (outline: string, language: string = 
         };
     } catch (error: any) { 
         console.warn("JSON Parse failed for slides, returning fallback", error);
-        return { slides: [{ title: "Topic Overview", points: ["1. Definition: Topic introduction.", "2. Key points: Core concepts.", "3. Example: Real-world case."] }] }; 
+        return { slides: [{ title: "Topic Overview", points: ["1. Definition: Topic introduction.", "2. Key points: Core concepts.", "3. Example: Real-world case."], visualSuggestion: "Icon of a lightbulb" }] }; 
     }
 };
 
@@ -47,23 +47,29 @@ export const generateQuiz = async (topic: string, numQuestions: number = 5, diff
     if (!topic || !topic.trim()) throw new Error("Error: Insufficient input");
     
     try {
-        const text = await routeAIRequest('/api/ai/quiz', { topic, difficulty, numberOfQuestions: numQuestions, language });
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        const quizData = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(text);
+        const quizData = await routeAIRequest('/api/ai/quiz', { topic, difficulty, numberOfQuestions: numQuestions, language });
         
         return {
             topic: quizData.topic || topic,
             questions: (quizData.questions || []).map((q: any, idx: number) => ({
                 questionText: q.questionText || `Question ${idx + 1}`,
                 options: Array.isArray(q.options) ? q.options : ["A", "B", "C", "D"],
-                correctAnswerIndex: typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : 0
-            })).slice(0, numQuestions)
+                correctAnswerIndex: typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : 0,
+                explanation: q.explanation || "",
+                whyOthersWrong: q.whyOthersWrong || ""
+            })).slice(0, 5)
         };
     } catch (error: any) { 
         console.warn("Quiz generation fallback", error);
         return {
            topic: "Local Quiz Fallback", 
-           questions: [{ questionText: "Is the local AI running correctly?", options: ["Yes", "No", "Checking...", "Ollama is required"], correctAnswerIndex: 0 }]
+           questions: [{ 
+               questionText: "Is the local AI running correctly?", 
+               options: ["Yes", "No", "Checking...", "Ollama is required"], 
+               correctAnswerIndex: 0,
+               explanation: "This is a fallback quiz because the AI generation failed.",
+               whyOthersWrong: "The other options are incorrect interpretations of the system state."
+           }]
         }; 
     }
 };
@@ -116,7 +122,6 @@ export const summarizeText = async (text: string, language: string = 'English'):
 };
 
 export const translateText = async (text: string, targetLanguage: string): Promise<string> => {
-    // Re-use doubt endpoint for general translation/explanation if needed, or router
     const prompt = `Translate the following text to ${targetLanguage}:\n\n${text}`;
     const response = await fetch('/api/ai-router', {
         method: 'POST',
@@ -132,7 +137,6 @@ export const analyzeImageContent = async (base64Image: string, mimeType: string)
 };
 
 export const performSmartSearch = async (query: string, knowledgeBase: any): Promise<{ answer: string; sources: { name: string; type: string }[] }> => {
-    // Basic implementation for now
     const prompt = `Based on the following knowledge base, answer the query: "${query}"\n\nKnowledge Base Summary: ${JSON.stringify(knowledgeBase).substring(0, 2000)}`;
     const text = await routeAIRequest('/api/ai-router', { prompt });
     return { answer: text, sources: [] };
@@ -163,10 +167,24 @@ export const generateExamPaperAI = async (subject: string, topic: string, numSec
     }
 };
 
-export const generateHybridLessonPlanAI = async (topic: string, onlineCount: number, offlineCount: number, language: string = 'English'): Promise<{ segments: any[] }> => {
-    const prompt = `Generate a hybrid lesson plan for topic: ${topic}. Online segments: ${onlineCount}, Offline segments: ${offlineCount}. Respond in ${language}.`;
-    const text = await routeAIRequest('/api/ai-router', { prompt });
-    return { segments: [{ title: 'Full Plan', content: text }] };
+/**
+ * Feature G: Smart Resource Hub
+ */
+export const generateResources = async (topic: string, subject: string, language: string = 'English'): Promise<any> => {
+    if (!topic || !topic.trim()) throw new Error("Error: Insufficient input");
+    try {
+        const text = await routeAIRequest('/api/ai/resources', { topic, subject, language });
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        return jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(text);
+    } catch (e) {
+        return {
+            topic: topic,
+            beginner: { name: "Foundational Guide", type: "Book", whyUseful: "Great for building core concepts.", suggestedUse: "Use as primary reading material." },
+            intermediate: { name: "Practical Handbook", type: "Website", whyUseful: "Focuses on real-world implementation.", suggestedUse: "Assign as homework for practice." },
+            advanced: { name: "In-depth Research", type: "Website", whyUseful: "Advanced theories and complex problem solving.", suggestedUse: "For self-paced advanced learners." },
+            teachingTip: "Encourage students to explore beyond the basic textbook definitions."
+        };
+    }
 };
 
 export const generateCurriculumIntelligenceAI = async (domain: string, language: string = 'English'): Promise<{ topics: any[], learningPath: string[] }> => {
@@ -176,5 +194,49 @@ export const generateCurriculumIntelligenceAI = async (domain: string, language:
         return jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(text);
     } catch (e) {
         return { topics: [], learningPath: [] };
+    }
+};
+
+export const generateAnimationScript = async (topic: string, language: string = 'English'): Promise<Omit<AnimationScript, 'id' | 'classCode' | 'createdAt'>> => {
+    try {
+        const data = await routeAIRequest('/api/ai/animation', { topic, language });
+        return {
+            topic: topic,
+            title: data.title || `${topic} Educational Animation`,
+            scenes: (data.scenes || []).map((s: any) => ({
+                visual: s.visual || "Generic visual description.",
+                voiceScript: s.voiceScript || "Narrator script goes here."
+            })),
+            summary: data.summary || "Animation summary."
+        };
+    } catch (e) {
+        return { 
+            topic: topic,
+            title: `${topic} Educational Animation`, 
+            scenes: [
+                { visual: "Introductory visual about " + topic, voiceScript: "Welcome! Today we are exploring " + topic + "." },
+                { visual: "Detailed breakdown illustration.", voiceScript: "Observe how these components interact in a " + topic + " system." },
+                { visual: "Conclusion visual summary.", voiceScript: "In summary, " + topic + " is essential for modern understanding." }
+            ]
+        };
+    }
+};
+
+export const generateEklavyaAnalysis = async (data: any, language: string = 'English'): Promise<EklavyaAnalysis> => {
+    try {
+        const result = await routeAIRequest('/api/ai/eklavya', { data, language });
+        // result could be the JSON directly if routeAIRequest returns data (which I updated it to do)
+        if (typeof result === 'string') {
+            const jsonMatch = result.match(/\{[\s\S]*\}/);
+            return jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(result);
+        }
+        return result;
+    } catch (e) {
+        return {
+            classSummary: { weakTopics: [], strongTopics: [], teacherAlerts: ["AI analysis unavailable."] },
+            studentInsights: [],
+            top3WeakStudents: [],
+            trendAnalysis: "Stable"
+        };
     }
 };
