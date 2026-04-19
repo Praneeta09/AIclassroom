@@ -20,8 +20,11 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, title, navIte
   return (
     <aside className="w-64 bg-brand-dark-blue p-6 flex flex-col fixed top-0 left-0 h-full border-r border-brand-border">
       <div className="flex items-center gap-3 mb-10">
-        <div className="p-2 bg-brand-cyan/20 rounded-lg"><DashboardIcon /></div>
-        <h1 className="text-xl font-bold text-white leading-tight">{title}</h1>
+        <div className="p-2.5 bg-gradient-to-br from-cyan-500/30 to-blue-500/30 rounded-xl border border-cyan-500/20 shadow-lg shadow-cyan-500/10"><DashboardIcon /></div>
+        <div>
+          <h1 className="text-xl font-black bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent leading-tight">{title}</h1>
+          <p className="text-[9px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-0.5">Smart Learning</p>
+        </div>
       </div>
       <nav className="flex-1 overflow-y-auto pr-2 custom-scrollbar scroll-smooth">
         <ul>

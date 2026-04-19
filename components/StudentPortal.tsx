@@ -87,10 +87,18 @@ const PerformanceInsights: React.FC<{ performance: StudentPerformance[], onStart
           <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">📚 Recommended Books</h3>
           <div className="space-y-3">
             {analysis.books?.map((b: any, i: number) => (
-              <div key={i} className="text-xs border-l-2 border-brand-cyan pl-3">
-                <p className="font-bold text-white">{b.name}</p>
+              <a
+                key={i}
+                href={`https://www.google.com/search?q=${encodeURIComponent((b.name || b.title) + ' book')}&tbm=bks`}
+                target="_blank"
+                rel="noreferrer"
+                className="block text-xs border-l-2 border-brand-cyan pl-3 hover:bg-brand-cyan/5 p-2 rounded-r-lg transition-all group"
+              >
+                <p className="font-bold text-white group-hover:text-brand-cyan transition-colors">{b.name || b.title}
+                  <span className="text-[10px] text-brand-cyan ml-2 opacity-0 group-hover:opacity-100 transition-opacity">🔗 Find Book</span>
+                </p>
                 <p className="text-gray-400 mt-0.5">{b.reason}</p>
-              </div>
+              </a>
             ))}
           </div>
         </div>
@@ -193,22 +201,34 @@ const HomePage: React.FC<{ user: User, quizzes: Quiz[], userSubmissions: Submiss
   const averageScore = totalPossibleScore > 0 ? ((totalScore / totalPossibleScore) * 100).toFixed(0) : 0;
   
   const [isStudying, setIsStudying] = useState(false);
+  const [studyPlan, setStudyPlan] = useState<any[] | null>(null);
   const [studyBlitz, setStudyBlitz] = useState<string | null>(null);
   const [targetTopic, setTargetTopic] = useState('');
 
   const handleStudyBlitz = async () => {
     setIsStudying(true);
+    setStudyPlan(null);
     setStudyBlitz(null);
     try {
-      const topics = targetTopic.trim() || quizzes.map(q => q.topic).concat(sharedContent.map(c => c.title)).slice(0, 5).join(', ');
-      const prompt = targetTopic.trim() 
-        ? `Generate a high-impact 15-minute study roadmap specifically for this topic: ${targetTopic}. Focus on building core intuition and practical application. Respond with structured bullet points.`
-        : `Generate a high-impact 15-minute study roadmap for these topics: ${topics}. Focus on the most critical concepts first. Respond with structured bullet points.`;
-      
-      const summary = await getExplanation(prompt, 'English');
+      const studyTopic = targetTopic.trim() || quizzes.map(q => q.topic).slice(0, 3).join(', ');
+      // Try structured study plan endpoint first
+      const resp = await fetch('/api/ai/study-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: studyTopic }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.plan && Array.isArray(data.plan) && data.plan.length > 0) {
+          setStudyPlan(data.plan);
+          return;
+        }
+      }
+      // Fallback: plain text
+      const summary = await getExplanation(`Generate a high-impact 15-minute study roadmap for: ${studyTopic}. Use bullet points.`, 'English');
       setStudyBlitz(summary);
     } catch (e: any) {
-      alert('Failed to generate study roadmap: ' + e.message);
+      console.error('Study plan failed:', e.message);
     } finally {
       setIsStudying(false);
     }
@@ -247,6 +267,41 @@ const HomePage: React.FC<{ user: User, quizzes: Quiz[], userSubmissions: Submiss
             </button>
           </div>
         </div>
+
+        {studyPlan && studyPlan.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h4 className="text-brand-cyan font-bold flex items-center gap-2 italic uppercase tracking-wider text-sm"><SparklesIcon /> {targetTopic ? `7-Day Plan: ${targetTopic}` : 'Personalized Study Plan'}</h4>
+              <button onClick={() => setStudyPlan(null)} className="text-xs text-gray-500 hover:text-white transition-colors">Close</button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {studyPlan.map((day: any, idx: number) => (
+                <div key={idx} className="bg-brand-dark rounded-xl border border-brand-border p-4 hover:border-brand-cyan/40 transition-all group">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-7 h-7 rounded-lg bg-brand-cyan/20 text-brand-cyan text-xs font-black flex items-center justify-center border border-brand-cyan/30">D{day.day}</span>
+                    <span className="text-xs font-bold text-brand-cyan truncate">{day.topic}</span>
+                  </div>
+                  <ul className="space-y-1 mb-3">
+                    {(day.tasks || []).map((task: string, ti: number) => (
+                      <li key={ti} className="text-[11px] text-gray-400 flex items-start gap-1">
+                        <span className="text-brand-cyan mt-0.5 flex-shrink-0">•</span> {task}
+                      </li>
+                    ))}
+                  </ul>
+                  {day.practice && (
+                    <div className="bg-purple-900/20 border border-purple-500/20 rounded-lg p-2 mb-2">
+                      <p className="text-[10px] font-bold text-purple-400 mb-0.5">📝 Practice</p>
+                      <p className="text-[10px] text-gray-400">{day.practice}</p>
+                    </div>
+                  )}
+                  {day.time && (
+                    <p className="text-[10px] text-gray-500 flex items-center gap-1">⏱️ {day.time}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {studyBlitz && (
           <div className="bg-brand-dark p-6 rounded-lg border-2 border-brand-cyan/30">
@@ -1916,7 +1971,7 @@ const StudentPortal: React.FC<StudentPortalProps> = ({
 
   return (
     <div className="flex">
-      <Sidebar activePage={activePage} onNavigate={setActivePage} title={<>Student<br/>Dashboard</>} navItems={navItems} isOfflineMode={isOfflineMode} toggleOfflineMode={toggleOfflineMode} />
+      <Sidebar activePage={activePage} onNavigate={setActivePage} title={<>Vidya<br/>AI</>} navItems={navItems} isOfflineMode={isOfflineMode} toggleOfflineMode={toggleOfflineMode} />
       <div className="flex-1 ml-64">
         <div className="p-8 max-w-7xl mx-auto">
           <header className="flex justify-between items-center mb-8 gap-8">
@@ -1930,10 +1985,10 @@ const StudentPortal: React.FC<StudentPortalProps> = ({
             </div>
           </header>
           <main>
-            {activePage === 'home' && <HomePage user={user} quizzes={quizzes} userSubmissions={userSubmissions} sharedContent={sharedContent} onStartQuiz={handleStartQuiz} />}
-            {activePage === 'study-mode' && <StudyModePage availableQuizzes={availableQuizzes} availableAssignments={availableAssignments} incompleteLectures={incompleteLectures} onStartQuiz={handleStartQuiz} onNavigate={setActivePage} />}
-            {activePage === 'assignments' && <StudentAssignmentsPage assignments={assignments} assignmentSubmissions={assignmentSubmissions} addAssignmentSubmission={addAssignmentSubmission} user={user} />}
-            {activePage === 'quizzes' && (
+            <div style={{ display: activePage === 'home' ? 'block' : 'none' }}><HomePage user={user} quizzes={quizzes} userSubmissions={userSubmissions} sharedContent={sharedContent} onStartQuiz={handleStartQuiz} /></div>
+            <div style={{ display: activePage === 'study-mode' ? 'block' : 'none' }}><StudyModePage availableQuizzes={availableQuizzes} availableAssignments={availableAssignments} incompleteLectures={incompleteLectures} onStartQuiz={handleStartQuiz} onNavigate={setActivePage} /></div>
+            <div style={{ display: activePage === 'assignments' ? 'block' : 'none' }}><StudentAssignmentsPage assignments={assignments} assignmentSubmissions={assignmentSubmissions} addAssignmentSubmission={addAssignmentSubmission} user={user} /></div>
+            <div style={{ display: activePage === 'quizzes' ? 'block' : 'none' }}>
               <div className="space-y-8">
                 {isAnalyzing && (
                   <div className="bg-brand-dark p-6 rounded-xl border border-brand-cyan/30">
@@ -1981,15 +2036,15 @@ const StudentPortal: React.FC<StudentPortalProps> = ({
                 )}
                 <QuizzesPage availableQuizzes={availableQuizzes} completedQuizzes={completedQuizzes} userSubmissions={userSubmissions} quizResult={quizResult} onStartQuiz={handleStartQuiz} user={user} addStudentPerformance={addStudentPerformance} isOfflineMode={isOfflineMode} />
               </div>
-            )}
-            {activePage === 'lectures' && <LecturesPage videoLectures={videoLectures} generatedLectures={generatedLectures} userEmail={user.email} updateLectureProgress={updateLectureProgress} />}
-            {activePage === 'file-information' && <SharedContentPage content={sharedContent} />}
-            {activePage === 'attendance' && <AttendancePage user={user} sessions={attendanceSessions} submitAttendance={submitAttendance} />}
-            {activePage === 'curriculum' && <CurriculumPage curriculumPlans={curriculumPlans} />}
-            {activePage === 'vidya-ai' && <VidyaAI userRole="student" classCode={user.classCode!} />}
-            {activePage === 'assistance' && <AnalysisPage submissions={userSubmissions} quizzes={quizzes} performance={studentPerformance} />}
-            {activePage === 'faq' && <FAQPage faqs={faqs} />}
-            {activePage === 'doubt-solver' && <DoubtSolverPage assistanceDisabled={assistanceDisabled} />}
+            </div>
+            <div style={{ display: activePage === 'lectures' ? 'block' : 'none' }}><LecturesPage videoLectures={videoLectures} generatedLectures={generatedLectures} userEmail={user.email} updateLectureProgress={updateLectureProgress} /></div>
+            <div style={{ display: activePage === 'file-information' ? 'block' : 'none' }}><SharedContentPage content={sharedContent} /></div>
+            <div style={{ display: activePage === 'attendance' ? 'block' : 'none' }}><AttendancePage user={user} sessions={attendanceSessions} submitAttendance={submitAttendance} /></div>
+            <div style={{ display: activePage === 'curriculum' ? 'block' : 'none' }}><CurriculumPage curriculumPlans={curriculumPlans} /></div>
+            <div style={{ display: activePage === 'vidya-ai' ? 'block' : 'none' }}><VidyaAI userRole="student" classCode={user.classCode!} /></div>
+            <div style={{ display: activePage === 'assistance' ? 'block' : 'none' }}><AnalysisPage submissions={userSubmissions} quizzes={quizzes} performance={studentPerformance} /></div>
+            <div style={{ display: activePage === 'faq' ? 'block' : 'none' }}><FAQPage faqs={faqs} /></div>
+            <div style={{ display: activePage === 'doubt-solver' ? 'block' : 'none' }}><DoubtSolverPage assistanceDisabled={assistanceDisabled} /></div>
           </main>
         </div>
       </div>
