@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AccessibilitySettings, Role, User, Quiz, Submission, SharedContent, GeneratedLecture, CaseStudy, FAQ, AttendanceSession, AttendanceRecord, Classroom, VideoLecture, ExamPaper, LessonPlan, CurriculumPlan, Assignment, AssignmentSubmission, CurriculumStatus, StudentPerformance, AnimationScript, SavedResourceHub } from './types';
 import * as apiService from './services/apiService';
 import RoleSelection from './components/RoleSelection';
 import Auth from './components/Auth';
 import TeacherPortal from './components/TeacherPortal';
 import StudentPortal from './components/StudentPortal';
-import AccessibilityEnhancer from './components/AccessibilityEnhancer';
 import JoinClass from './components/JoinClass';
 import ParentJoinClass from './components/ParentJoinClass';
 import ParentPortal from './components/ParentPortal';
+import VoiceController from './voice/VoiceController';
 
 const App: React.FC = () => {
   const faqsData: FAQ[] = [
@@ -44,6 +44,9 @@ const App: React.FC = () => {
   const [manualOffline, setManualOffline] = useState(false);
 
   const [accessibilitySettings, setAccessibilitySettings] = useState<AccessibilitySettings>({ fontSize: 16, highContrast: false });
+
+  // Voice navigation callbacks (set by each portal on mount)
+  const [voiceNavigate, setVoiceNavigate] = useState<((page: string) => void) | undefined>(undefined);
 
   useEffect(() => {
     const handleOnline = () => { if (!manualOffline) setIsOfflineMode(false); syncOfflineData(); };
@@ -351,6 +354,7 @@ const App: React.FC = () => {
             updateResourceHub={handleUpdateResourceHub}
             deleteResourceHub={handleDeleteResourceHub}
             setResourceHubStatus={handleSetResourceHubStatus}
+            onVoiceReady={(nav) => setVoiceNavigate(() => nav)}
           />;
         case 'student':
           return <StudentPortal
@@ -377,6 +381,7 @@ const App: React.FC = () => {
             addStudentPerformance={handleAddStudentPerformance}
             isOfflineMode={isOfflineMode}
             toggleOfflineMode={toggleOfflineMode}
+            onVoiceReady={(nav) => setVoiceNavigate(() => nav)}
           />;
         case 'parent':
           if (!user.classCode) {
@@ -392,6 +397,7 @@ const App: React.FC = () => {
             curriculumPlans={curriculumPlans}
             assignments={assignments}
             assignmentSubmissions={assignmentSubmissions}
+            onVoiceReady={(nav) => setVoiceNavigate(() => nav)}
           />;
         default:
           return <RoleSelection onSelectRole={handleRoleSelect} />;
@@ -408,6 +414,22 @@ const App: React.FC = () => {
   const highContrastClasses = accessibilitySettings.highContrast ? 'bg-white text-black' : 'bg-brand-dark text-gray-200';
   const isDashboardView = user && (user.role === 'teacher' || (user.role === 'student' && user.classCode));
 
+  // Build role-specific voice actions dispatched as custom events
+  const voiceActions = user ? {
+    triggerGenerateQuiz: (topic: string) =>
+      window.dispatchEvent(new CustomEvent('voiceGenerateQuiz', { detail: { topic } })),
+    triggerGeneratePPT: (topic: string) =>
+      window.dispatchEvent(new CustomEvent('voiceGeneratePPT', { detail: { topic } })),
+    triggerDownloadPPT: () =>
+      (document.getElementById('voice-download-ppt') as HTMLButtonElement)?.click(),
+    startQuiz: () =>
+      window.dispatchEvent(new CustomEvent('voiceStartQuiz')),
+    selectOption: (idx: number) =>
+      (document.getElementById(`quiz-option-${['a','b','c','d'][idx]}`) as HTMLButtonElement)?.click(),
+    readSummary: () =>
+      window.dispatchEvent(new CustomEvent('voiceReadSummary')),
+  } : {};
+
   return (
     <div className={`min-h-screen font-sans transition-colors duration-300 ${highContrastClasses}`} style={{ fontSize: `${accessibilitySettings.fontSize}px` }}>
       {isOfflineMode && (
@@ -419,7 +441,13 @@ const App: React.FC = () => {
       <main className={!isDashboardView ? "container mx-auto px-4 py-8" : ""}>
         {renderContent()}
       </main>
-      <AccessibilityEnhancer settings={accessibilitySettings} setSettings={setAccessibilitySettings} />
+      <VoiceController
+        role={user?.role ?? 'student'}
+        onNavigate={voiceNavigate}
+        voiceActions={voiceActions}
+        settings={accessibilitySettings}
+        setSettings={setAccessibilitySettings}
+      />
     </div>
   );
 };

@@ -161,6 +161,8 @@ interface ParentPortalProps {
   curriculumPlans: CurriculumPlan[];
   assignments: Assignment[];
   assignmentSubmissions: AssignmentSubmission[];
+  /** Called on mount so VoiceController can navigate between portal tabs */
+  onVoiceReady?: (navigate: (page: string) => void) => void;
 }
 
 const StatCard: React.FC<{ title: string, value: string | number, icon?: React.ReactNode }> = ({ title, value, icon }) => (
@@ -177,7 +179,8 @@ const StatCard: React.FC<{ title: string, value: string | number, icon?: React.R
 
 const ParentPortal: React.FC<ParentPortalProps> = ({ 
   user, onLogout, quizzes, studentSubmissions, attendanceSessions, 
-  videoLectures, curriculumPlans, assignments, assignmentSubmissions 
+  videoLectures, curriculumPlans, assignments, assignmentSubmissions,
+  onVoiceReady
 }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'attendance' | 'curriculum'>('dashboard');
   const [language, setLanguage] = useState<'English' | 'Hindi' | 'Marathi'>('English');
@@ -186,6 +189,27 @@ const ParentPortal: React.FC<ParentPortalProps> = ({
   const [aiRecommendations, setAiRecommendations] = useState<string | null>(null);
   const [isGeneratingRecommendations, setIsGeneratingRecommendations] = useState(false);
   const t = translations[language];
+
+  // Register voice navigation callback
+  useEffect(() => {
+    onVoiceReady?.((page: string) => {
+      const validTabs = ['dashboard', 'performance', 'attendance', 'curriculum'];
+      if (validTabs.includes(page)) setActiveTab(page as any);
+    });
+  }, [onVoiceReady]);
+
+  // Voice: read summary
+  useEffect(() => {
+    const handleReadSummary = () => {
+      if (aiSummary) {
+        const utterance = new SpeechSynthesisUtterance(aiSummary);
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+      }
+    };
+    window.addEventListener('voiceReadSummary', handleReadSummary);
+    return () => window.removeEventListener('voiceReadSummary', handleReadSummary);
+  }, [aiSummary]);
 
   // Calculate Metrics
   const totalQuizzes = quizzes.filter(q => q.status === 'published').length;

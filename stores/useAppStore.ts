@@ -38,8 +38,18 @@ interface AppStore {
   // --- Active Page ---
   teacherActivePage: string;
   studentActivePage: string;
+  parentActivePage: string;
   setTeacherActivePage: (page: string) => void;
   setStudentActivePage: (page: string) => void;
+  setParentActivePage: (page: string) => void;
+
+  // --- Voice Control ---
+  voiceEnabled: boolean;
+  voiceLanguage: 'en-US' | 'hi-IN' | 'mr-IN';
+  lastSpokenText: string;
+  setVoiceEnabled: (enabled: boolean) => void;
+  setVoiceLanguage: (lang: 'en-US' | 'hi-IN' | 'mr-IN') => void;
+  setLastSpokenText: (text: string) => void;
 
   // --- Quiz Session (student taking quiz) ---
   quizSession: QuizSessionState;
@@ -106,8 +116,18 @@ export const useAppStore = create<AppStore>()(
       // Active pages
       teacherActivePage: 'home',
       studentActivePage: 'home',
+      parentActivePage: 'dashboard',
       setTeacherActivePage: (page) => set({ teacherActivePage: page }),
       setStudentActivePage: (page) => set({ studentActivePage: page }),
+      setParentActivePage: (page) => set({ parentActivePage: page }),
+
+      // Voice control
+      voiceEnabled: false,
+      voiceLanguage: 'en-US',
+      lastSpokenText: '',
+      setVoiceEnabled: (enabled) => set({ voiceEnabled: enabled }),
+      setVoiceLanguage: (lang) => set({ voiceLanguage: lang }),
+      setLastSpokenText: (text) => set({ lastSpokenText: text }),
 
       // Quiz session
       quizSession: defaultQuizSession,
@@ -150,6 +170,7 @@ export const useAppStore = create<AppStore>()(
       partialize: (state) => ({
         teacherActivePage: state.teacherActivePage,
         studentActivePage: state.studentActivePage,
+        parentActivePage: state.parentActivePage,
         quizSession: state.quizSession,
         pptState: state.pptState,
         notesState: state.notesState,
@@ -159,6 +180,8 @@ export const useAppStore = create<AppStore>()(
         vidyaSavedNotes: state.vidyaSavedNotes,
         preferredLanguage: state.preferredLanguage,
         doubtConversation: state.doubtConversation,
+        voiceEnabled: state.voiceEnabled,
+        voiceLanguage: state.voiceLanguage,
       }),
     }
   )

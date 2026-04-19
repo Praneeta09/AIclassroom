@@ -39,6 +39,8 @@ interface StudentPortalProps {
   addStudentPerformance: (p: Omit<StudentPerformance, 'id' | 'timestamp'>) => Promise<void>;
   isOfflineMode: boolean;
   toggleOfflineMode: (val: boolean) => void;
+  /** Called on mount so VoiceController can navigate between pages */
+  onVoiceReady?: (navigate: (page: string) => void) => void;
 }
 
 // ---- Reused sub-components ----
@@ -1832,13 +1834,28 @@ const StudentPortal: React.FC<StudentPortalProps> = ({
   generatedLectures, generatedCaseStudies, faqs, attendanceSessions, addAttendanceRecord,
   videoLectures, curriculumPlans, assistanceDisabled, submitAttendance, updateLectureProgress, assignments, assignmentSubmissions, addAssignmentSubmission,
   studentPerformance, addStudentPerformance,
-  isOfflineMode, toggleOfflineMode
+  isOfflineMode, toggleOfflineMode, onVoiceReady
 }) => {
   const [activePage, setActivePage] = useState('home');
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [quizResult, setQuizResult] = useState<{ score: number; total: number } | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [quizInsights, setQuizInsights] = useState<any | null>(null);
+
+  // Register voice navigation callback
+  useEffect(() => {
+    onVoiceReady?.(setActivePage);
+  }, [onVoiceReady]);
+
+  // Listen for voice-triggered quiz actions via custom events
+  useEffect(() => {
+    const handleVoiceStartQuiz = () => {
+      const nextQuiz = quizzes.filter(q => !studentSubmissions.some(s => s.quizId === q.id))[0];
+      if (nextQuiz) { setActiveQuiz(nextQuiz); setActivePage('quizzes'); }
+    };
+    window.addEventListener('voiceStartQuiz', handleVoiceStartQuiz);
+    return () => window.removeEventListener('voiceStartQuiz', handleVoiceStartQuiz);
+  }, [quizzes, studentSubmissions]);
 
   const navItems = [
     { id: 'home', label: 'Home', icon: <HomeIcon /> },

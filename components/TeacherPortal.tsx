@@ -71,6 +71,8 @@ interface TeacherPortalProps {
   updateResourceHub: (a: SavedResourceHub) => Promise<void>;
   deleteResourceHub: (id: string) => Promise<void>;
   setResourceHubStatus: (id: string, status: CurriculumStatus) => Promise<void>;
+  /** Called on mount so VoiceController can navigate between pages */
+  onVoiceReady?: (navigate: (page: string) => void) => void;
 }
 
 type AttendancePageSession = AttendanceSession & {
@@ -125,6 +127,30 @@ const TeacherPortal: React.FC<TeacherPortalProps> = (props) => {
   const [editingLecture, setEditingLecture] = useState<GeneratedLecture | null>(null);
   const [editingAnimation, setEditingAnimation] = useState<AnimationScript | null>(null);
   const { onLogout, user, quizzes, studentSubmissions, sharedContent, generatedLectures, generatedCaseStudies, attendanceSessions, isOfflineMode, toggleOfflineMode, curriculumPlans, assignments, setQuizStatus, deleteGeneratedLecture, setGeneratedLectureStatus, examPapers, setExamPaperStatus, deleteExamPaper, resourceHubs, addResourceHub, deleteResourceHub, setResourceHubStatus, animationScripts, setAnimationScriptStatus, deleteAnimationScript, students, faqs } = props;
+
+  // Register voice navigation
+  useEffect(() => {
+    props.onVoiceReady?.(setActivePage);
+  }, [props.onVoiceReady]);
+
+  // Listen for voice-triggered AI actions
+  useEffect(() => {
+    const handleVoiceQuiz = (e: CustomEvent) => {
+      setActivePage('quiz-generation');
+      // Dispatch a second event that QuizGenerationPage listens to
+      window.dispatchEvent(new CustomEvent('voiceFillQuizTopic', { detail: { topic: e.detail?.topic } }));
+    };
+    const handleVoicePPT = (e: CustomEvent) => {
+      setActivePage('content-generator');
+      window.dispatchEvent(new CustomEvent('voiceFillPPTTopic', { detail: { topic: e.detail?.topic } }));
+    };
+    window.addEventListener('voiceGenerateQuiz', handleVoiceQuiz as EventListener);
+    window.addEventListener('voiceGeneratePPT', handleVoicePPT as EventListener);
+    return () => {
+      window.removeEventListener('voiceGenerateQuiz', handleVoiceQuiz as EventListener);
+      window.removeEventListener('voiceGeneratePPT', handleVoicePPT as EventListener);
+    };
+  }, []);
 
   const navItems = [
     { id: 'home', label: 'Home', icon: <HomeIcon /> },
